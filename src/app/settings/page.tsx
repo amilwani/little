@@ -134,7 +134,9 @@ export default function SettingsPage() {
             <>
               <div className={group}>
                 {PROVIDERS.map((p) => {
-                  const on = draft.aiProvider === p.id;
+                  // With no explicit pick, show the provider Little actually uses: the first one with a key.
+                  const inUse = draft.aiProvider ?? PROVIDERS.find((x) => draft.apiKeys[x.id])?.id;
+                  const on = inUse === p.id;
                   return (
                     <div key={p.id} className="px-4 py-3.5">
                       <div className="flex items-center justify-between gap-3">

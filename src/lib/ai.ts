@@ -9,7 +9,7 @@ import { getTemplate, type Template } from "./templates";
 import { languageForAi } from "./languages";
 import type { AiProvider, Settings, Transcript, TranscriptSegment } from "./drive";
 
-export const MODELS = {
+const MODELS = {
   gemini: "gemini-2.5-flash",
   openai: "gpt-5-mini",
   openaiTranscribe: "whisper-1",
