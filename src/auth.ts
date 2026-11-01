@@ -1,19 +1,15 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import { BASE_SCOPES } from "./lib/scopes";
 
-// Little only asks for `drive.file`: it can see the files it creates in the
-// user's Drive and nothing else. Google treats this as a non-sensitive scope.
-const SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/drive.file",
-].join(" ");
+const SCOPES = BASE_SCOPES;
 
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
     error?: "RefreshTokenError";
+    /** The Google permissions this user has granted, space-separated. */
+    scope?: string;
   }
 }
 
@@ -22,6 +18,7 @@ declare module "@auth/core/jwt" {
     access_token?: string;
     expires_at?: number;
     refresh_token?: string;
+    scope?: string;
     error?: "RefreshTokenError";
   }
 }
@@ -33,6 +30,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       authorization: {
         params: {
           scope: SCOPES,
+          include_granted_scopes: "true",
           access_type: "offline",
           prompt: "consent",
         },
@@ -48,6 +46,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           access_token: account.access_token,
           expires_at: account.expires_at,
           refresh_token: account.refresh_token,
+          scope: account.scope,
         };
       }
       // Token still valid for at least another minute.
@@ -90,6 +89,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Our server never stores notes.
       session.accessToken = token.access_token;
       session.error = token.error;
+      session.scope = token.scope;
       return session;
     },
   },

@@ -99,6 +99,8 @@ export async function saveNoteToDrive(
     audioFileId,
     projectId: note.projectId,
     template: note.template,
+    calendarEventId: note.calendarEventId,
+    attendees: note.attendees,
   };
   opts.onProgress?.("Updating your notes list");
   const index = await upsertNoteInIndex(token, meta);

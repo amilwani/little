@@ -31,6 +31,7 @@ import {
   updateProject,
 } from "@/lib/notes";
 import { formatDuration } from "@/lib/recorder";
+import { hasCalendar, listEvents, rememberEvent, type CalendarEvent } from "@/lib/calendar";
 import { getTemplate } from "@/lib/templates";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
@@ -38,7 +39,8 @@ import { useSettings } from "@/lib/useSettings";
 const NONE = "none";
 
 export function NotesHome() {
-  const { token, user } = useAccessToken();
+  const { token, user, scope } = useAccessToken();
+  const [nextMeeting, setNextMeeting] = useState<CalendarEvent | null>(null);
   const { settings } = useSettings(token);
   const router = useRouter();
   const params = useSearchParams();
@@ -84,6 +86,15 @@ export function NotesHome() {
     window.addEventListener("online", refresh);
     return () => window.removeEventListener("online", refresh);
   }, [refresh]);
+
+  // The next meeting on the user's calendar, if they connected it.
+  useEffect(() => {
+    if (!token || !hasCalendar(scope)) return;
+    const now = Date.now();
+    listEvents(token, new Date(now - 15 * 60e3), new Date(now + 3 * 3600e3))
+      .then((list) => setNextMeeting(list.find((e) => !e.allDay && new Date(e.end).getTime() > now) ?? null))
+      .catch(() => {});
+  }, [token, scope]);
 
   // Search inside notes, transcripts and AI notes with Drive's full-text search.
   useEffect(() => {
@@ -347,6 +358,25 @@ export function NotesHome() {
                   #{t}
                 </button>
               ))}
+            </div>
+          )}
+
+          {nextMeeting && !index?.notes.some((n) => n.calendarEventId === nextMeeting.id) && (
+            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-accent bg-accent-soft px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted">
+                  {new Date(nextMeeting.start).getTime() <= Date.now() ? "Happening now" : "Up next"} ·{" "}
+                  {new Date(nextMeeting.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                </div>
+                <div className="truncate font-medium">{nextMeeting.title}</div>
+              </div>
+              <Link
+                href={`/notes/new?event=${encodeURIComponent(nextMeeting.id)}`}
+                onClick={() => rememberEvent(nextMeeting)}
+                className="shrink-0 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white"
+              >
+                ● Record
+              </Link>
             </div>
           )}
 

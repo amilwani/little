@@ -15,6 +15,7 @@ import { useSettings } from "@/lib/useSettings";
 import { cache as localCache } from "@/lib/local";
 import { TEMPLATES, getTemplate, type TemplateId } from "@/lib/templates";
 import type { Project } from "@/lib/drive";
+import { guessTemplate, recallEvent } from "@/lib/calendar";
 
 function defaultTitle() {
   return `Note ${new Date().toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`;
@@ -40,6 +41,20 @@ function NewRecording() {
   const [template, setTemplate] = useState<TemplateId>("general");
   const [projectId, setProjectId] = useState<string>(params.get("p") ?? "");
   const [projects, setProjects] = useState<Project[]>([]);
+  const eventId = params.get("event");
+  const [attendees, setAttendees] = useState<string[] | undefined>();
+
+  // Started from a calendar meeting: use its title, people and a matching template.
+  useEffect(() => {
+    if (!eventId) return;
+    const e = recallEvent(eventId);
+    if (!e) return;
+    setTitle(e.title);
+    setAttendees(e.attendees.filter((a) => !a.self).map((a) => a.name ?? a.email));
+    const t = guessTemplate(e) as TemplateId;
+    setTemplate(t);
+    setNotes(getTemplate(t).outline);
+  }, [eventId]);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [tab, setTab] = useState<"transcript" | "notes">("transcript");
@@ -116,6 +131,8 @@ function NewRecording() {
       audio: recorder.blob,
       projectId: projectId || undefined,
       template,
+      calendarEventId: eventId ?? undefined,
+      attendees,
     };
     (async () => {
       setSaving("Saving on this device");
@@ -133,7 +150,7 @@ function NewRecording() {
         setSaveError("Couldn't upload to Google Drive. Your note is safe on this device and will upload automatically later.");
       }
     })();
-  }, [recorder.state, recorder.blob, recorder.elapsedMs, title, notes, lang, live.segments, token, settings.saveAudio, router, projectId, template]);
+  }, [recorder.state, recorder.blob, recorder.elapsedMs, title, notes, lang, live.segments, token, settings.saveAudio, router, projectId, template, eventId, attendees]);
 
   const active = recorder.state === "recording" || recorder.state === "paused";
 
