@@ -31,6 +31,7 @@ import {
   updateProject,
 } from "@/lib/notes";
 import { formatDuration } from "@/lib/recorder";
+import { langInfo } from "@/lib/languages";
 import { hasCalendar, listEvents, rememberEvent, type CalendarEvent } from "@/lib/calendar";
 import { getTemplate } from "@/lib/templates";
 import { useAccessToken } from "@/lib/useAccessToken";
@@ -336,6 +337,12 @@ export function NotesHome() {
               placeholder="Search notes, transcripts, action items"
               className="min-w-0 flex-1 rounded-xl border border-border bg-card px-4 py-2.5 outline-none focus:border-accent"
             />
+            <Link
+              href="/ask"
+              className="flex shrink-0 items-center rounded-xl border border-border bg-card px-3 text-sm hover:border-accent"
+            >
+              ✨ Ask
+            </Link>
             <button
               onClick={() => {
                 setSelecting((s) => !s);
@@ -637,7 +644,7 @@ function NoteCard({
           {new Date(note.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
         </span>
         <span>· {formatDuration(note.durationSec * 1000)}</span>
-        <span>· {note.language === "hi-IN" ? "हिंदी" : "English"}</span>
+        <span>· {langInfo(note.language).native}</span>
         {template && (
           <span>
             · {template.emoji} {template.name}

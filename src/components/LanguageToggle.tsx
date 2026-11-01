@@ -1,27 +1,39 @@
 "use client";
 
-export type Lang = "en-IN" | "hi-IN";
+import { LANGUAGES, langInfo, type Lang } from "@/lib/languages";
 
+export type { Lang };
+
+/** English and Hindi one tap away; other Indian languages in a menu. */
 export function LanguageToggle({ value, onChange }: { value: Lang; onChange: (l: Lang) => void }) {
-  const opts: { id: Lang; label: string }[] = [
-    { id: "en-IN", label: "English" },
-    { id: "hi-IN", label: "हिंदी" },
-  ];
+  const quick: Lang[] = ["en-IN", "hi-IN"];
+  const other = !quick.includes(value);
   return (
-    <div className="inline-flex rounded-full border border-border bg-card p-1" role="radiogroup" aria-label="Language">
-      {opts.map((o) => (
+    <div className="inline-flex items-center rounded-full border border-border bg-card p-1" role="radiogroup" aria-label="Language">
+      {quick.map((code) => (
         <button
-          key={o.id}
+          key={code}
           role="radio"
-          aria-checked={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-            value === o.id ? "bg-accent text-white" : "text-muted"
-          }`}
+          aria-checked={value === code}
+          onClick={() => onChange(code)}
+          className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${value === code ? "bg-accent text-white" : "text-muted"}`}
         >
-          {o.label}
+          {langInfo(code).native}
         </button>
       ))}
+      <select
+        aria-label="More languages"
+        value={other ? value : ""}
+        onChange={(e) => e.target.value && onChange(e.target.value as Lang)}
+        className={`rounded-full px-3 py-1.5 text-sm font-medium outline-none ${other ? "bg-accent text-white" : "bg-transparent text-muted"}`}
+      >
+        <option value="">More…</option>
+        {LANGUAGES.filter((l) => !quick.includes(l.code)).map((l) => (
+          <option key={l.code} value={l.code}>
+            {l.native} · {l.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
