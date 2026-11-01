@@ -76,7 +76,7 @@ export function AppHeader({
   return (
     <>
       {!focus && <Sidebar />}
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md max-md:border-b max-md:border-border/70">
+      <header className={`sticky top-0 z-20 bg-background/80 backdrop-blur-xl ${hideRecord ? "md:bg-transparent md:backdrop-blur-none" : ""} max-md:border-b max-md:border-border/70`}>
         <div className={`mx-auto flex h-14 items-center gap-2 px-4 md:h-12 md:px-3 ${focus ? "max-w-6xl" : "md:px-4"}`}>
           <div className="flex min-w-0 items-center gap-2">
             {back ? <BackButton href={back} /> : <span className="md:hidden"><Logo /></span>}

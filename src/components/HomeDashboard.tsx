@@ -181,8 +181,18 @@ export function HomeDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, latest.map((n) => n.id + n.updatedAt).join()]);
 
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const complete = (todo: Todo) => {
     if (!token) return;
+    const left = myOpen.filter((t) => !justDone.has(t.id) && t.id !== todo.id).length;
+    setToast(left === 0 ? "All done. Enjoy the quiet ✨" : `Nice! ${left} to go`);
+    navigator.vibrate?.(12);
     setJustDone((s) => new Set(s).add(todo.id));
     setTodos((list) => list?.map((t) => (t.id === todo.id ? { ...t, status: "done" } : t)) ?? list);
     updateTodos(
@@ -202,9 +212,11 @@ export function HomeDashboard() {
 
   const firstName = user?.name?.split(" ")[0];
   // Worked out in the browser, so the greeting follows the user's own clock.
-  const [hello, setHello] = useState<{ greeting: string; today: string } | null>(null);
+  const [hello, setHello] = useState<{ greeting: string; today: string; period: string } | null>(null);
   useEffect(() => {
+    const h = new Date().getHours();
     setHello({
+      period: h >= 5 && h < 12 ? "morning" : h >= 12 && h < 17 ? "afternoon" : "evening",
       greeting: greeting(),
       today: new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }),
     });
@@ -233,18 +245,28 @@ export function HomeDashboard() {
   return (
     <>
       <AppHeader hideRecord />
-      <main className="pb-nav mx-auto max-w-[760px] px-4 pt-6 md:px-8 md:pt-16">
-        <p className="h-5 text-sm text-muted">{hello?.today}</p>
-        <h1 className="mt-1 text-[30px] font-bold leading-tight tracking-tight md:text-[36px]">
-          {hello?.greeting ?? "Hello"}
-          {firstName ? `, ${firstName}` : ""}
-        </h1>
-        {summary && <p className="mt-1.5 text-[15px] text-muted">You have {summary}.</p>}
+      <div className={`aurora aurora-${hello?.period ?? "morning"}`} aria-hidden />
+      <main className="pb-nav relative mx-auto max-w-[760px] px-4 pt-8 md:px-8 md:pt-16">
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="h-5 text-sm font-medium text-foreground/60">{hello?.today}</p>
+            <h1 className="mt-1 font-display text-[42px] leading-[1.02] tracking-[-0.015em] md:text-[56px]">
+              {hello?.greeting ?? "Hello"}
+              {firstName ? (
+                <>
+                  , <em className="italic">{firstName}</em>
+                </>
+              ) : null}
+            </h1>
+            {summary && <p className="mt-2 text-[15px] leading-relaxed text-foreground/65">You have {summary}.</p>}
+          </div>
+          {todos !== null && stats.done + open > 0 && <ProgressRing done={stats.done} total={stats.done + open} />}
+        </div>
 
         {/* Start something */}
-        <div className="no-scrollbar -mx-4 mt-6 flex gap-1.5 overflow-x-auto px-4 md:mx-0 md:px-0">
-          <RecordLink className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-foreground px-3.5 text-sm font-medium text-background transition hover:opacity-90 active:scale-[0.98]">
-            <span className="h-2 w-2 rounded-full bg-accent" /> Record
+        <div className="mt-6 grid grid-cols-4 gap-2 md:flex md:gap-1.5">
+          <RecordLink className="flex h-[68px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-foreground text-[13px] md:h-10 md:flex-row md:gap-2.5 md:rounded-full md:pl-3.5 md:pr-4 md:text-sm text-sm font-medium text-background shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)] transition hover:-translate-y-px hover:shadow-[0_10px_24px_-10px_rgba(0,0,0,0.55)] active:scale-[0.97]">
+            <span className="pulse-dot h-2.5 w-2.5 rounded-full bg-accent" /> Record
           </RecordLink>
           <QuickAction href="/notes/write" icon="doc" label="Write" />
           <QuickAction href="/dictate" icon="pen" label="Dictate" />
@@ -256,7 +278,7 @@ export function HomeDashboard() {
             e.preventDefault();
             router.push(ask.trim() ? `/ask?q=${encodeURIComponent(ask.trim())}` : "/ask");
           }}
-          className="mt-3 flex items-center gap-2.5 rounded-lg bg-subtle/70 px-3.5 transition focus-within:bg-subtle"
+          className="mt-4 flex items-center gap-2.5 rounded-2xl border border-border bg-background/80 px-4 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.12)] backdrop-blur transition focus-within:border-foreground/25 focus-within:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_12px_32px_-12px_rgba(0,0,0,0.18)]"
         >
           <Icon name="sparkles" size={16} className="shrink-0 text-accent" />
           <input
@@ -264,7 +286,7 @@ export function HomeDashboard() {
             onChange={(e) => setAsk(e.target.value)}
             placeholder="Ask anything about your notes"
             aria-label="Ask your notes"
-            className="h-11 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
+            className="h-12 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
           />
           {ask.trim() && (
             <button aria-label="Ask" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
@@ -284,7 +306,7 @@ export function HomeDashboard() {
         {isNewUser ? (
           <GettingStarted calendar={calendar} hasKey={hasKey} />
         ) : (
-          <div className="mt-10 flex flex-col gap-9">
+          <div className="stagger mt-10 flex flex-col gap-10">
             {calendar ? (
               events && events.length > 0 ? (
                 <Section title="Today" href="/meetings" more="Calendar">
@@ -344,7 +366,7 @@ export function HomeDashboard() {
                   <Link
                     key={i.id}
                     href="/ideas"
-                    className={`idea-${i.color} flex max-w-full items-center gap-2 rounded-full border border-border py-1 pl-2.5 pr-3 text-sm hover:bg-subtle`}
+                    className={`idea-${i.color} bg-idea flex max-w-full items-center gap-2 rounded-full border border-black/[0.04] py-1.5 pl-3 pr-3.5 text-sm transition hover:-translate-y-px hover:shadow-sm`}
                   >
                     <span className="bg-idea-dot h-2 w-2 shrink-0 rounded-full" />
                     <span className="max-w-[16rem] truncate">{i.text.split("\n")[0]}</span>
@@ -361,6 +383,14 @@ export function HomeDashboard() {
           </div>
         )}
       </main>
+      {toast && (
+        <div role="status" className="toast fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex items-center gap-2 rounded-full bg-foreground px-4 py-2.5 text-sm font-medium text-background shadow-2xl md:bottom-8 md:left-[calc(50%+7.5rem)]">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white">
+            <Icon name="check" size={12} strokeWidth={3} />
+          </span>
+          {toast}
+        </div>
+      )}
     </>
   );
 }
@@ -369,7 +399,7 @@ function QuickAction({ href, icon, label }: { href: string; icon: IconName; labe
   return (
     <RecordLink
       href={href}
-      className="flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm text-foreground/80 transition hover:bg-subtle active:scale-[0.98]"
+      className="flex h-[68px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-border bg-background/70 text-[13px] text-foreground/85 backdrop-blur md:h-10 md:flex-row md:gap-2 md:rounded-full md:px-4 md:text-sm transition hover:-translate-y-px hover:border-foreground/20 hover:shadow-sm active:scale-[0.97]"
     >
       <Icon name={icon} size={16} className="text-muted" />
       {label}
@@ -380,8 +410,8 @@ function QuickAction({ href, icon, label }: { href: string; icon: IconName; labe
 function Section({ title, href, more, children }: { title: string; href?: string; more?: string; children: React.ReactNode }) {
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[13px] font-medium text-muted">{title}</h2>
+      <div className="mb-2.5 flex items-baseline justify-between border-b border-border pb-2">
+        <h2 className="font-display text-[24px] leading-none tracking-[-0.01em]">{title}</h2>
         {href && (
           <Link href={href} className="flex items-center gap-0.5 text-xs text-muted hover:text-foreground">
             {more ?? "See all"} <Icon name="chevronRight" size={13} />
@@ -395,9 +425,15 @@ function Section({ title, href, more, children }: { title: string; href?: string
 
 function Skeleton({ rows }: { rows: number }) {
   return (
-    <div className="space-y-px overflow-hidden rounded-2xl border border-border" aria-label="Loading">
+    <div className="space-y-3" aria-label="Loading">
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="h-14 animate-pulse bg-subtle" />
+        <div key={i} className="flex items-center gap-3">
+          <div className="skeleton h-8 w-8 rounded-lg" />
+          <div className="flex-1 space-y-1.5">
+            <div className="skeleton h-3.5 rounded" style={{ width: `${70 - i * 12}%` }} />
+            <div className="skeleton h-3 w-1/3 rounded" />
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -406,8 +442,16 @@ function Skeleton({ rows }: { rows: number }) {
 function NoteRow({ note, project, preview }: { note: NoteMeta; project?: Project; preview?: string }) {
   return (
     <li>
-      <Link href={`/notes/${note.id}`} className="group flex items-start gap-3 rounded-md px-2 py-2 hover:bg-subtle">
-        <Icon name={note.kind === "written" ? "doc" : "mic"} size={16} className="mt-[3px] shrink-0 text-muted" />
+      <Link href={`/notes/${note.id}`} className="group flex items-start gap-3 rounded-lg px-2 py-2.5 transition hover:bg-subtle">
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition group-hover:scale-105"
+          style={{
+            background: project ? `color-mix(in srgb, ${project.color} 14%, transparent)` : "var(--subtle)",
+            color: project?.color ?? "var(--muted)",
+          }}
+        >
+          <Icon name={note.kind === "written" ? "doc" : "mic"} size={16} strokeWidth={2} />
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-medium">{note.title}</span>
           {preview && <span className="mt-0.5 block truncate text-[13px] text-muted">{preview}</span>}
@@ -446,19 +490,28 @@ function firstLine(md: string) {
 function TodoRow({ todo, project, done, onDone }: { todo: Todo; project?: Project; done: boolean; onDone: () => void }) {
   const due = todo.due ? dueLabel(todo.due) : null;
   return (
-    <li className="flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-subtle">
+    <li className={`flex items-start gap-3 rounded-lg px-2 py-2 transition-all duration-500 hover:bg-subtle ${done ? "opacity-60" : ""}`}>
       <button
         onClick={onDone}
         disabled={done}
         aria-label={`Mark "${todo.title}" complete`}
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
-          done ? "border-foreground bg-foreground text-background" : "border-foreground/30 hover:border-foreground"
+        className={`relative mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-all duration-200 ${
+          done
+            ? "scale-110 border-accent bg-accent text-white"
+            : "border-foreground/25 hover:scale-110 hover:border-accent hover:bg-accent-soft active:scale-90"
         }`}
       >
-        {done && <Icon name="check" size={12} strokeWidth={2.5} />}
+        {done && (
+          <>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="check-draw">
+              <path d="M5 12l4.5 4.5L19 7" />
+            </svg>
+            <Burst />
+          </>
+        )}
       </button>
       <Link href={todo.projectId ? `/todos?p=${todo.projectId}` : "/todos?tab=mine"} className="min-w-0 flex-1">
-        <span className={`block text-sm leading-snug ${done ? "text-muted line-through" : ""}`}>{todo.title}</span>
+        <span className={`block text-[15px] leading-snug transition-colors ${done ? "text-muted line-through decoration-accent/60" : ""}`}>{todo.title}</span>
         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
           {due && (
             <span className={`flex items-center gap-1 ${due.late ? "font-medium text-accent" : due.soon ? "font-medium text-foreground" : ""}`}>
@@ -485,6 +538,64 @@ function TodoRow({ todo, project, done, onDone }: { todo: Todo; project?: Projec
   );
 }
 
+const BURST_COLORS = ["#dc5a45", "#e9c33b", "#4d96ff", "#4fb384", "#9b7ee6", "#ef9a62"];
+
+/** A tiny confetti pop when a to-do is ticked off. */
+function Burst() {
+  return (
+    <span className="burst pointer-events-none absolute inset-0" aria-hidden>
+      {Array.from({ length: 10 }, (_, i) => {
+        const a = (i / 10) * Math.PI * 2;
+        const d = 18 + (i % 3) * 6;
+        return (
+          <i
+            key={i}
+            style={
+              {
+                background: BURST_COLORS[i % BURST_COLORS.length],
+                "--dx": `${Math.cos(a) * d}px`,
+                "--dy": `${Math.sin(a) * d}px`,
+              } as React.CSSProperties
+            }
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+/** This week's to-dos, done out of total, as a ring. */
+function ProgressRing({ done, total }: { done: number; total: number }) {
+  const r = 26;
+  const c = 2 * Math.PI * r;
+  const pct = total ? done / total : 0;
+  return (
+    <Link href="/todos?tab=mine" className="group hidden shrink-0 flex-col items-center gap-1 pt-6 sm:flex" title="To-dos done this week">
+      <span className="relative flex h-16 w-16 items-center justify-center">
+        <svg width="64" height="64" viewBox="0 0 64 64" className="-rotate-90">
+          <circle cx="32" cy="32" r={r} fill="none" stroke="currentColor" strokeWidth="5" className="text-foreground/[0.07]" />
+          <circle
+            cx="32"
+            cy="32"
+            r={r}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - pct)}
+            style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)" }}
+          />
+        </svg>
+        <span className="absolute text-sm font-semibold tabular-nums">
+          {done}/{total}
+        </span>
+      </span>
+      <span className="text-[11px] text-muted group-hover:text-foreground">done this week</span>
+    </Link>
+  );
+}
+
 function MeetingRow({ event, recorded }: { event: CalendarEvent; recorded: boolean }) {
   const start = new Date(event.start);
   const now = start.getTime() <= Date.now();
@@ -493,7 +604,7 @@ function MeetingRow({ event, recorded }: { event: CalendarEvent; recorded: boole
       <div className="w-14 shrink-0 text-sm tabular-nums">
         {now ? (
           <span className="flex items-center gap-1.5 text-xs font-medium text-accent">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" /> Now
+            <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> Now
           </span>
         ) : (
           start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })

@@ -560,7 +560,7 @@ function NotePage() {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none"
+              className="w-full bg-transparent font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em] outline-none"
               aria-label="Title"
             />
             <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">

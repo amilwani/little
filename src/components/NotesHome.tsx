@@ -330,7 +330,7 @@ export function NotesHome() {
           )}
           <div className="mt-5 flex items-start gap-3 md:mt-0">
             <div className="min-w-0 flex-1">
-              <h1 className="flex items-center gap-2.5 text-[26px] font-semibold leading-tight tracking-tight">
+              <h1 className="flex items-center gap-2.5 font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">
                 {currentProject && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: currentProject.color }} aria-hidden />}
                 <span className="truncate">{heading}</span>
               </h1>
@@ -749,6 +749,15 @@ function NoteCard({
 
   const body = (
     <div className="flex items-center gap-3">
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition group-hover:scale-105"
+        style={{
+          background: project ? `color-mix(in srgb, ${project.color} 14%, transparent)` : "var(--subtle)",
+          color: project?.color ?? "var(--muted)",
+        }}
+      >
+        <Icon name={note.kind === "written" ? "doc" : "mic"} size={16} strokeWidth={2} />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-medium">{note.title}</div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">

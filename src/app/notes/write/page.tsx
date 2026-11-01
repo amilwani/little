@@ -131,7 +131,7 @@ function WriteNote() {
           placeholder="Untitled note"
           aria-label="Title"
           autoFocus
-          className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none placeholder:text-foreground/25"
+          className="w-full bg-transparent font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em] outline-none placeholder:text-foreground/25"
         />
         <div className="-mt-1 flex flex-wrap items-center gap-2">
           {projects.length > 0 && (

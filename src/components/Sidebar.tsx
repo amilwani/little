@@ -60,7 +60,7 @@ export function Sidebar() {
               key={n.href}
               href={n.href}
               aria-current={on ? "page" : undefined}
-              className={`${row} ${on ? "bg-foreground/[0.06] font-medium text-foreground" : "text-foreground/75"}`}
+              className={`${row} ${on ? "bg-background font-medium text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}
             >
               <Icon name={n.icon} size={17} className={on ? "" : "text-muted"} />
               {n.label}
@@ -95,7 +95,7 @@ export function Sidebar() {
         <Link
           href="/settings"
           aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-          className={`${row} ${pathname.startsWith("/settings") ? "bg-foreground/[0.06] font-medium" : "text-foreground/75"}`}
+          className={`${row} ${pathname.startsWith("/settings") ? "bg-background font-medium shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}
         >
           <Icon name="settings" size={17} className="text-muted" /> Settings
         </Link>
@@ -140,7 +140,7 @@ function NoteShortcuts() {
     const on = pathname === `/notes/${n.id}`;
     return (
       <li key={n.id}>
-        <Link href={`/notes/${n.id}`} className={`${row} ${on ? "bg-foreground/[0.06] font-medium" : "text-foreground/75"}`}>
+        <Link href={`/notes/${n.id}`} className={`${row} ${on ? "bg-background font-medium shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}>
           <Icon name={n.kind === "written" ? "doc" : "mic"} size={15} className="text-muted" />
           <span className="min-w-0 flex-1 truncate">{n.title}</span>
         </Link>
@@ -201,7 +201,7 @@ function ProjectRow({ project, active }: { project: Project; active: boolean }) 
     <li ref={setNodeRef}>
       <Link
         href={`/notes?p=${project.id}`}
-        className={`${row} ${active ? "bg-foreground/[0.06] font-medium" : "text-foreground/75"} ${isOver ? "bg-accent-soft ring-1 ring-accent" : ""}`}
+        className={`${row} ${active ? "bg-background font-medium shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"} ${isOver ? "bg-accent-soft ring-1 ring-accent" : ""}`}
       >
         <span className="flex w-[17px] justify-center">
           <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: project.color }} />

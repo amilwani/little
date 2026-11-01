@@ -169,7 +169,7 @@ function NewRecording() {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled meeting"
           aria-label="Title"
-          className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none placeholder:text-foreground/25"
+          className="w-full bg-transparent font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em] outline-none placeholder:text-foreground/25"
         />
 
         <div className="-mt-2 flex flex-wrap items-center gap-2">

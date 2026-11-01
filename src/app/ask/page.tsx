@@ -138,7 +138,7 @@ export default function AskPage() {
     <>
       <AppHeader />
       <main className="pb-nav mx-auto max-w-2xl px-4 pt-5 md:pt-8">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Ask your notes</h1>
+        <h1 className="font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">Ask your notes</h1>
         <p className="mt-0.5 text-sm text-muted">Answers come from your meetings, with links to the ones I used.</p>
         <form
           onSubmit={(e) => {

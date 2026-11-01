@@ -182,7 +182,7 @@ function Todos() {
     >
       <AppHeader />
       <main className="pb-nav mx-auto max-w-6xl px-4 pt-5 md:pt-8">
-        <h1 className="mb-4 text-[26px] font-semibold leading-tight tracking-tight">To-dos</h1>
+        <h1 className="mb-4 font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">To-dos</h1>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex rounded-lg bg-subtle p-0.5" role="tablist" aria-label="Whose tasks">
             {(
