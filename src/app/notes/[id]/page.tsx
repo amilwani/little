@@ -137,6 +137,7 @@ function NotePage() {
         transcript: t,
         notes: userNotes,
         template: current.template,
+        attendees: current.attendees,
       });
       setAiNotes(md);
       setTab("ai");
@@ -325,6 +326,9 @@ function NotePage() {
               {new Date(meta.createdAt).toLocaleString()} · {formatDuration(meta.durationSec * 1000)} ·{" "}
               {meta.language === "hi-IN" ? "हिंदी" : "English"}
             </p>
+            {meta.attendees?.length ? (
+              <p className="mt-1 text-sm text-muted">📅 With {meta.attendees.join(", ")}</p>
+            ) : null}
 
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               <button

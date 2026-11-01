@@ -10,5 +10,5 @@ export function useAccessToken() {
     // Google access was revoked or expired for good: sign in again.
     if (data?.error === "RefreshTokenError") signIn("google");
   }, [data?.error]);
-  return { token: data?.accessToken ?? null, status, user: data?.user };
+  return { token: data?.accessToken ?? null, status, user: data?.user, scope: data?.scope };
 }

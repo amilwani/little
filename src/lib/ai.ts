@@ -183,13 +183,14 @@ Rules: use only what the transcript and notes say; never invent names, numbers o
 
 export async function generateNotes(
   cfg: AiConfig,
-  input: { title: string; language: string; transcript: Transcript; notes: string; template?: string },
+  input: { title: string; language: string; transcript: Transcript; notes: string; template?: string; attendees?: string[] },
 ): Promise<string> {
   if (!input.transcript.segments.length && !input.notes.trim()) {
     throw new AiError("There's no transcript or notes to work from yet.");
   }
   const user = `Meeting title: ${input.title}
 Main language: ${languageName(input.language)}
+Invited: ${input.attendees?.length ? input.attendees.join(", ") : "(not known)"}
 
 Attendee's own notes:
 ${input.notes.trim() || "(none)"}

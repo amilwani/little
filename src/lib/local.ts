@@ -20,6 +20,8 @@ export type PendingNote = {
   audio: Blob | null;
   projectId?: string;
   template?: string;
+  calendarEventId?: string;
+  attendees?: string[];
 };
 
 export const cache = {

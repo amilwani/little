@@ -27,6 +27,7 @@ home screen as a PWA.
 | Meeting templates: 1:1, process walkthrough, review, brainstorming, decision making | Done |
 | Shared projects: share by Google email; team tasks per project; private to-dos stay private | Done |
 | To-do dashboard: complete vs in review, by project, by person, due this week | Done |
+| Meetings from Google Calendar: record with the right title, people and template; notes link back to the meeting | Done |
 | Search inside notes, transcripts and AI notes; tags; pinned notes | Done |
 | To-do board (To do, In progress, In review, Complete) with Team tasks and My tasks, with "+ To-do" on meeting action items | Done |
 
@@ -85,6 +86,14 @@ Teammates join a shared project by picking its folder once in Google's file pick
 3. Copy your **project number** from the Cloud console's home page.
 4. Set `NEXT_PUBLIC_GOOGLE_API_KEY` (the key) and `NEXT_PUBLIC_GOOGLE_APP_ID` (the project number) in `.env.local` and
    in Vercel, then redeploy.
+
+### 2c. Google Calendar (for the Meetings page)
+
+1. In Google Cloud, **APIs & Services → Library**, enable **Google Calendar API**.
+2. In **Google Auth Platform → Data access**, add the scope `.../auth/calendar.events.readonly`.
+
+Little asks for calendar access only when someone taps **Connect Google Calendar**, and only to read events.
+For a public launch Google reviews this scope (a sensitive scope: verification, no security audit).
 
 ### 3. Deploy to Vercel
 

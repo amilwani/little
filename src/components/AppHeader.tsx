@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { Mascot } from "./Mascot";
 
+const NAV = [
+  { href: "/meetings", label: "Meetings", icon: "📅" },
+  { href: "/todos", label: "To-dos", icon: "☑️" },
+  { href: "/settings", label: "Settings", icon: "⚙️" },
+];
+
 export function AppHeader({ back, title, wide }: { back?: string; title?: string; wide?: boolean }) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur">
@@ -15,15 +21,22 @@ export function AppHeader({ back, title, wide }: { back?: string; title?: string
             <span className="text-lg font-semibold">Little</span>
           </Link>
         )}
-        {title && <h1 className="truncate font-semibold">{title}</h1>}
-        <div className="ml-auto flex items-center">
-          <Link href="/todos" className="rounded-full px-3 py-1.5 text-sm text-muted hover:bg-accent-soft">
-            To-dos
-          </Link>
-          <Link href="/settings" className="rounded-full px-3 py-1.5 text-sm text-muted hover:bg-accent-soft">
-            Settings
-          </Link>
-        </div>
+        {title && <h1 className="min-w-0 truncate font-semibold">{title}</h1>}
+        <nav className="ml-auto flex shrink-0 items-center">
+          {NAV.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              aria-label={n.label}
+              className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-sm text-muted hover:bg-accent-soft"
+            >
+              <span aria-hidden className="text-base sm:hidden">
+                {n.icon}
+              </span>
+              <span className="hidden sm:inline">{n.label}</span>
+            </Link>
+          ))}
+        </nav>
       </div>
     </header>
   );

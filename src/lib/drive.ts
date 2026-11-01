@@ -33,6 +33,10 @@ export type NoteMeta = {
   tags?: string[];
   pinned?: boolean;
   template?: string;
+  /** The Google Calendar event this note was recorded for. */
+  calendarEventId?: string;
+  /** Who was invited, as names or emails, from the calendar event. */
+  attendees?: string[];
   /** Task list items from the AI notes, kept here so the Actions page is fast. */
   actions?: ActionItem[];
 };
