@@ -343,3 +343,47 @@ export async function riffOnIdea(cfg: AiConfig, idea: string): Promise<string> {
   if (!idea.trim()) throw new AiError("Write the idea first.");
   return stripFences(await complete(cfg, RIFF_SYSTEM, idea));
 }
+
+// ---- Slack inbox --------------------------------------------------------------
+
+const SLACK_SYSTEM = `You read a person's recent Slack messages and pick out things they need to do.
+Each message is numbered and shows when it was sent, who sent it, and where. "you" is the person.
+
+Return a JSON array only. Each item: {"ref": message number, "title": short task in the imperative, "due": "YYYY-MM-DD" or null, "who": who asked (or "you" if it is the person's own promise)}.
+
+Include:
+- Clear asks to the person ("can you send...", "please review...", "@you deck bhej dena").
+- Promises the person made ("I'll send it tomorrow", "kal tak kar dunga").
+Skip greetings, FYIs, questions already answered, things clearly done, and asks aimed at someone else.
+Messages may be in English, Hindi or Hinglish; write titles in English. Work out due dates from words like "today", "tomorrow", "kal", "Friday", "EOD" relative to when the message was sent. Never invent tasks. If nothing is actionable, return [].`;
+
+export async function extractSlackActions(
+  cfg: AiConfig,
+  messages: { at: string; from: string; where: string; text: string }[],
+): Promise<{ ref: number; title: string; due?: string; who: string }[]> {
+  if (!messages.length) return [];
+  const user = messages
+    .map((m, i) => `[${i + 1}] ${new Date(m.at).toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })} · ${m.from} in ${m.where}:\n${m.text}`)
+    .join("\n\n");
+  const raw =
+    cfg.provider === "gemini"
+      ? await gemini(cfg.apiKey, SLACK_SYSTEM, [{ text: user }], true).catch((e) => {
+          throw e instanceof AiError ? e : new AiError("Couldn't reach Gemini. Check your connection.");
+        })
+      : await complete(cfg, SLACK_SYSTEM, user);
+  let parsed: unknown;
+  try {
+    const text = stripFences(raw);
+    parsed = JSON.parse(text.slice(text.indexOf("["), text.lastIndexOf("]") + 1));
+  } catch {
+    throw new AiError("The AI's answer came back in an unexpected format. Try again.");
+  }
+  return (Array.isArray(parsed) ? parsed : [])
+    .map((x: { ref?: unknown; title?: unknown; due?: unknown; who?: unknown }) => ({
+      ref: Number(x.ref),
+      title: String(x.title ?? "").trim(),
+      due: typeof x.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.due) ? x.due : undefined,
+      who: String(x.who ?? "").trim() || "someone",
+    }))
+    .filter((x) => x.title && x.ref >= 1 && x.ref <= messages.length);
+}

@@ -167,6 +167,7 @@ export default function SettingsPage() {
               ["I", "Ideas"],
               ["T", "To-dos"],
               ["M", "Meetings"],
+              ["B", "Slack inbox"],
               ["A", "Ask your notes"],
               ["⌘ S", "Save a note"],
             ].map(([k, what]) => (
@@ -200,6 +201,7 @@ export default function SettingsPage() {
                   )
                     return;
                   // Clear everything Little keeps on this device, so the next person can't see it.
+                  await fetch("/api/slack/disconnect", { method: "POST" }).catch(() => {});
                   await cache.clear();
                   try {
                     for (const store of [localStorage, sessionStorage])
