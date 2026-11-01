@@ -29,6 +29,23 @@ export type NoteMeta = {
   transcriptFileId?: string;
   audioFileId?: string;
   aiNotesFileId?: string;
+  projectId?: string;
+  tags?: string[];
+  pinned?: boolean;
+  template?: string;
+  /** Task list items from the AI notes, kept here so the Actions page is fast. */
+  actions?: ActionItem[];
+};
+
+export type ActionItem = { text: string; done: boolean };
+
+export type Project = {
+  id: string;
+  name: string;
+  color: string;
+  /** The project's folder in Drive (Little/<name>/), holding its notes' folders. */
+  folderId: string;
+  createdAt: string;
 };
 
 export type TranscriptSegment = {
@@ -42,7 +59,7 @@ export type Transcript = {
   segments: TranscriptSegment[];
 };
 
-export type NoteIndex = { version: 1; notes: NoteMeta[] };
+export type NoteIndex = { version: 1; notes: NoteMeta[]; projects?: Project[] };
 
 export class DriveError extends Error {
   constructor(
@@ -221,20 +238,77 @@ export async function saveIndex(token: string, index: NoteIndex, fileId: string 
   });
 }
 
-/** Adds or replaces one note in index.json (read-modify-write). */
+/** Adds or replaces one note in index.json. */
 export async function upsertNoteInIndex(token: string, meta: NoteMeta) {
-  const { index, fileId } = await loadIndex(token);
-  const others = index.notes.filter((n) => n.id !== meta.id);
-  index.notes = [meta, ...others].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  await saveIndex(token, index, fileId);
-  return index;
+  return updateIndex(token, (index) => {
+    const others = index.notes.filter((n) => n.id !== meta.id);
+    index.notes = [meta, ...others].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  });
+}
+
+/** Changes some fields of one note in index.json, keeping fields changed elsewhere. */
+export async function patchNoteInIndex(token: string, id: string, patch: Partial<NoteMeta>) {
+  let updated: NoteMeta | undefined;
+  const index = await updateIndex(token, (idx) => {
+    idx.notes = idx.notes.map((n) => (n.id === id ? (updated = { ...n, ...patch }) : n));
+  });
+  return { index, note: updated };
+}
+
+let indexQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Read-modify-write of index.json. Changes from this tab run one at a time,
+ * so quick edits (a tag, then a pin) never overwrite each other.
+ */
+export function updateIndex(token: string, change: (index: NoteIndex) => void): Promise<NoteIndex> {
+  const run = indexQueue.then(async () => {
+    const { index, fileId } = await loadIndex(token);
+    index.projects ??= [];
+    change(index);
+    await saveIndex(token, index, fileId);
+    return index;
+  });
+  indexQueue = run.catch(() => {});
+  return run;
+}
+
+/** Moves a file or folder from one Drive folder to another. */
+export async function moveFile(token: string, fileId: string, toFolderId: string) {
+  const current = await call<{ parents?: string[] }>(token, `${API}/files/${fileId}?fields=parents`);
+  const params = new URLSearchParams({ addParents: toFolderId, fields: "id" });
+  const remove = (current.parents ?? []).filter((p) => p !== toFolderId).join(",");
+  if (remove) params.set("removeParents", remove);
+  await call(token, `${API}/files/${fileId}?${params}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+export async function renameFile(token: string, fileId: string, name: string) {
+  await call(token, `${API}/files/${fileId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/**
+ * Full-text search across Little's files in Drive (notes, transcripts, AI
+ * notes). Returns the ids of the folders that hold matching files.
+ */
+export async function searchDrive(token: string, text: string): Promise<Set<string>> {
+  const q = `fullText contains '${escapeQuery(text)}' and trashed = false and mimeType != '${FOLDER_MIME}'`;
+  const params = new URLSearchParams({ q, fields: "files(parents)", spaces: "drive", pageSize: "200" });
+  const data = await call<{ files: { parents?: string[] }[] }>(token, `${API}/files?${params}`);
+  return new Set(data.files.flatMap((f) => f.parents ?? []));
 }
 
 export async function removeNoteFromIndex(token: string, noteId: string) {
-  const { index, fileId } = await loadIndex(token);
-  index.notes = index.notes.filter((n) => n.id !== noteId);
-  await saveIndex(token, index, fileId);
-  return index;
+  return updateIndex(token, (index) => {
+    index.notes = index.notes.filter((n) => n.id !== noteId);
+  });
 }
 
 // ---- settings.json ----------------------------------------------------------

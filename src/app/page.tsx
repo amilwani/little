@@ -1,5 +1,6 @@
 import { auth, signIn } from "@/auth";
 import { Mascot } from "@/components/Mascot";
+import { Suspense } from "react";
 import { NotesHome } from "@/components/NotesHome";
 
 type Feature = { title: string; body: string; icon: React.ReactNode };
@@ -39,7 +40,12 @@ const FEATURES: Feature[] = [
 
 export default async function Home() {
   const session = await auth();
-  if (session?.user) return <NotesHome />;
+  if (session?.user)
+    return (
+      <Suspense>
+        <NotesHome />
+      </Suspense>
+    );
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-center px-5 pb-10 pt-12 text-center">
