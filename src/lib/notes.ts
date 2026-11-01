@@ -249,7 +249,7 @@ function safeName(name: string) {
   return name.replace(/[\\/:*?"<>|]/g, " ").trim() || "Project";
 }
 
-export async function createProject(token: string, name: string, color?: string) {
+export async function createProject(token: string, name: string, color?: string, owner?: string) {
   const root = await getRootFolder(token);
   const folderId = await createFolder(token, safeName(name), root);
   const { index: before } = await loadIndex(token);
@@ -259,6 +259,8 @@ export async function createProject(token: string, name: string, color?: string)
     color: color ?? PROJECT_COLORS[(before.projects?.length ?? 0) % PROJECT_COLORS.length],
     folderId,
     createdAt: new Date().toISOString(),
+    owner,
+    role: "owner",
   };
   const index = await updateIndex(token, (idx) => {
     idx.projects = [...(idx.projects ?? []), project];
@@ -271,6 +273,16 @@ export async function updateProject(token: string, project: Project, changes: { 
   if (changes.name && changes.name !== project.name) await renameFile(token, project.folderId, safeName(changes.name));
   const index = await updateIndex(token, (idx) => {
     idx.projects = idx.projects?.map((p) => (p.id === project.id ? { ...p, ...changes } : p));
+  });
+  await cache.setIndex(index);
+  return index;
+}
+
+/** Stops showing a project someone shared with you. Their Drive is untouched. */
+export async function leaveProject(token: string, project: Project) {
+  const index = await updateIndex(token, (idx) => {
+    idx.projects = idx.projects?.filter((p) => p.id !== project.id);
+    idx.notes = idx.notes.filter((n) => n.projectId !== project.id);
   });
   await cache.setIndex(index);
   return index;

@@ -46,6 +46,14 @@ export type Project = {
   /** The project's folder in Drive (Little/<name>/), holding its notes' folders. */
   folderId: string;
   createdAt: string;
+  /** Email of the person whose Drive holds the project. */
+  owner?: string;
+  /** True once the project has been shared with anyone. */
+  shared?: boolean;
+  /** "member" when someone else shared this project with you. */
+  role?: "owner" | "member";
+  /** Set when the project can't be read (unshared, deleted or offline). */
+  unavailable?: boolean;
 };
 
 export type TranscriptSegment = {
@@ -218,27 +226,123 @@ export async function trashFile(token: string, fileId: string) {
   });
 }
 
-// ---- index.json: the list of all notes -------------------------------------
+// ---- The notes list -----------------------------------------------------------
+//
+// Notes that aren't in a project are listed in Little/index.json, which also
+// lists the user's projects. Each project's notes are listed in
+// <project folder>/project.json, so a project shared with teammates carries its
+// own list. loadIndex() combines them into one view; updateIndex() writes back
+// only the files whose part of the view changed.
 
-export async function loadIndex(token: string): Promise<{ index: NoteIndex; fileId: string | null }> {
+type ProjectFile = {
+  version: 1;
+  project: { id: string; name: string; color: string; createdAt: string; owner?: string };
+  notes: NoteMeta[];
+};
+
+type Loaded = {
+  index: NoteIndex;
+  personal: { fileId: string | null; raw: string };
+  projectFiles: Map<string, { fileId: string | null; raw: string | null }>;
+};
+
+const PROJECT_FILE = "project.json";
+
+function personalJson(index: NoteIndex) {
+  const known = new Set((index.projects ?? []).filter((p) => !p.unavailable).map((p) => p.id));
+  return JSON.stringify(
+    {
+      version: 1,
+      notes: index.notes.filter((n) => !n.projectId || !known.has(n.projectId)),
+      projects: (index.projects ?? []).map(({ unavailable, ...ref }) => (void unavailable, ref)),
+    },
+    null,
+    2,
+  );
+}
+
+function projectJson(index: NoteIndex, p: Project) {
+  const file: ProjectFile = {
+    version: 1,
+    project: { id: p.id, name: p.name, color: p.color, createdAt: p.createdAt, owner: p.owner },
+    notes: index.notes.filter((n) => n.projectId === p.id),
+  };
+  return JSON.stringify(file, null, 2);
+}
+
+async function loadAll(token: string): Promise<Loaded> {
   const root = await getRootFolder(token);
   const fileId = await findFileInFolder(token, root, "index.json");
-  if (!fileId) return { index: { version: 1, notes: [] }, fileId: null };
-  return { index: await readJson<NoteIndex>(token, fileId), fileId };
+  const personalRaw = fileId ? await readText(token, fileId) : "";
+  const personal: NoteIndex = personalRaw ? JSON.parse(personalRaw) : { version: 1, notes: [] };
+  const projects = personal.projects ?? [];
+  const projectFiles: Loaded["projectFiles"] = new Map();
+  let notes = [...personal.notes];
+
+  await Promise.all(
+    projects.map(async (p, i) => {
+      try {
+        const id = await findFileInFolder(token, p.folderId, PROJECT_FILE);
+        if (!id) {
+          // A project from before project.json existed: its notes are still in index.json.
+          projectFiles.set(p.id, { fileId: null, raw: null });
+          return;
+        }
+        const raw = await readText(token, id);
+        const file = JSON.parse(raw) as ProjectFile;
+        projectFiles.set(p.id, { fileId: id, raw });
+        // project.json is the source of truth for a project's name and colour.
+        projects[i] = { ...p, ...file.project, folderId: p.folderId, shared: p.shared, role: p.role };
+        notes = notes.filter((n) => n.projectId !== p.id).concat(file.notes.map((n) => ({ ...n, projectId: p.id })));
+      } catch {
+        // Unshared, deleted or offline: show it as unavailable and never overwrite it.
+        projects[i] = { ...p, unavailable: true };
+      }
+    }),
+  );
+
+  notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const index: NoteIndex = { version: 1, notes, projects };
+  return { index, personal: { fileId, raw: personalRaw }, projectFiles };
 }
 
-export async function saveIndex(token: string, index: NoteIndex, fileId: string | null) {
+export async function loadIndex(token: string): Promise<{ index: NoteIndex }> {
+  return { index: (await loadAll(token)).index };
+}
+
+async function saveAll(token: string, before: Loaded, index: NoteIndex) {
   const root = await getRootFolder(token);
-  return saveFile(token, {
-    name: "index.json",
-    mimeType: "application/json",
-    body: JSON.stringify(index, null, 2),
-    folderId: root,
-    fileId: fileId ?? undefined,
-  });
+  const writes: Promise<unknown>[] = [];
+  for (const p of index.projects ?? []) {
+    if (p.unavailable) continue;
+    const raw = projectJson(index, p);
+    const prev = before.projectFiles.get(p.id);
+    if (prev && prev.raw === raw) continue;
+    writes.push(
+      saveFile(token, {
+        name: PROJECT_FILE,
+        mimeType: "application/json",
+        body: raw,
+        folderId: p.folderId,
+        fileId: prev?.fileId ?? undefined,
+      }),
+    );
+  }
+  // Write project files first, so a note is never missing from both lists.
+  await Promise.all(writes);
+  const raw = personalJson(index);
+  if (raw !== before.personal.raw) {
+    await saveFile(token, {
+      name: "index.json",
+      mimeType: "application/json",
+      body: raw,
+      folderId: root,
+      fileId: before.personal.fileId ?? undefined,
+    });
+  }
 }
 
-/** Adds or replaces one note in index.json. */
+/** Adds or replaces one note. */
 export async function upsertNoteInIndex(token: string, meta: NoteMeta) {
   return updateIndex(token, (index) => {
     const others = index.notes.filter((n) => n.id !== meta.id);
@@ -246,7 +350,7 @@ export async function upsertNoteInIndex(token: string, meta: NoteMeta) {
   });
 }
 
-/** Changes some fields of one note in index.json, keeping fields changed elsewhere. */
+/** Changes some fields of one note, keeping fields changed elsewhere. */
 export async function patchNoteInIndex(token: string, id: string, patch: Partial<NoteMeta>) {
   let updated: NoteMeta | undefined;
   const index = await updateIndex(token, (idx) => {
@@ -258,15 +362,16 @@ export async function patchNoteInIndex(token: string, id: string, patch: Partial
 let indexQueue: Promise<unknown> = Promise.resolve();
 
 /**
- * Read-modify-write of index.json. Changes from this tab run one at a time,
- * so quick edits (a tag, then a pin) never overwrite each other.
+ * Read-modify-write of the notes list. Changes from this tab run one at a
+ * time, so quick edits (a tag, then a pin) never overwrite each other.
  */
 export function updateIndex(token: string, change: (index: NoteIndex) => void): Promise<NoteIndex> {
   const run = indexQueue.then(async () => {
-    const { index, fileId } = await loadIndex(token);
+    const before = await loadAll(token);
+    const index: NoteIndex = structuredClone(before.index);
     index.projects ??= [];
     change(index);
-    await saveIndex(token, index, fileId);
+    await saveAll(token, before, index);
     return index;
   });
   indexQueue = run.catch(() => {});

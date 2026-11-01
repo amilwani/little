@@ -16,17 +16,20 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { Mascot } from "@/components/Mascot";
+import { TodoDashboard } from "@/components/TodoDashboard";
 import type { NoteIndex, Project } from "@/lib/drive";
 import { loadIndex } from "@/lib/drive";
 import { cache } from "@/lib/local";
-import { loadTodos, newTodo, STATUSES, updateTodos, type Todo, type TodoStatus } from "@/lib/todos";
+import { isMine, loadTodos, newTodo, STATUSES, updateTodos, type Todo, type TodoStatus } from "@/lib/todos";
 import { useAccessToken } from "@/lib/useAccessToken";
 
 const LOCAL = "little:todos";
 
 export default function TodosPage() {
   const router = useRouter();
-  const { token, status } = useAccessToken();
+  const { token, status, user } = useAccessToken();
+  const [view, setView] = useState<"team" | "mine" | null>(null);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [todos, setTodos] = useState<Todo[] | null>(null);
   const [index, setIndex] = useState<NoteIndex | null>(null);
   const [project, setProject] = useState<string | null>(null);
@@ -93,7 +96,13 @@ export default function TodosPage() {
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const noteTitles = useMemo(() => new Map((index?.notes ?? []).map((n) => [n.id, n.title])), [index]);
 
-  const visible = (todos ?? []).filter((t) => !project || t.projectId === project);
+  const activeProjects = projects.filter((p) => !p.unavailable);
+  // Team tasks first when there are projects; otherwise your own list.
+  const tab = view ?? (activeProjects.length ? "team" : "mine");
+  const visible = (todos ?? []).filter((t) =>
+    tab === "team" ? !!t.projectId && (!project || t.projectId === project) : !t.projectId || isMine(t, user),
+  );
+  const addTarget = tab === "team" ? (project ?? activeProjects[0]?.id) : undefined;
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -116,7 +125,8 @@ export default function TodosPage() {
     const title = draft.trim();
     if (!title) return;
     setDraft("");
-    const todo = newTodo(title, { projectId: project ?? undefined });
+    if (tab === "team" && !addTarget) return;
+    const todo = newTodo(title, { projectId: addTarget, createdBy: user?.email ?? undefined });
     change((list) => [todo, ...list.filter((t) => t.id !== todo.id)]);
   };
 
@@ -132,11 +142,48 @@ export default function TodosPage() {
     >
       <AppHeader back="/" title="To-dos" wide />
       <main className="mx-auto max-w-5xl px-4 pb-24 pt-4">
+        <div className="mb-3 flex gap-1" role="tablist">
+          {(
+            [
+              ["team", "👥 Team tasks"],
+              ["mine", "👤 My tasks"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setView(id)}
+              className={`rounded-xl px-3 py-1.5 text-sm font-medium ${tab === id ? "bg-accent-soft" : "text-muted hover:bg-accent-soft/50"}`}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={() => setShowDashboard((v) => !v)}
+            aria-pressed={showDashboard}
+            className={`ml-auto rounded-xl border px-3 py-1.5 text-sm font-medium ${showDashboard ? "border-accent bg-accent-soft" : "border-border bg-card"}`}
+          >
+            {showDashboard ? "▦ Board" : "📊 Dashboard"}
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-muted">
+          {tab === "team"
+            ? "Tasks in your projects. Everyone a project is shared with sees them."
+            : "Your private to-dos, plus team tasks assigned to you. Private ones are only visible to you."}
+        </p>
         <form onSubmit={add} className="flex gap-2">
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Add a to-do"
+            placeholder={
+              tab === "team"
+                ? addTarget
+                  ? `Add a task to ${projectById.get(addTarget)?.name}`
+                  : "Create a project first to add team tasks"
+                : "Add a private to-do"
+            }
+            disabled={tab === "team" && !addTarget}
             className="min-w-0 flex-1 rounded-xl border border-border bg-card px-4 py-2.5 outline-none focus:border-accent"
           />
           <button type="submit" className="rounded-xl bg-accent px-4 font-semibold text-white disabled:opacity-50" disabled={!draft.trim()}>
@@ -144,10 +191,10 @@ export default function TodosPage() {
           </button>
         </form>
 
-        {projects.length > 0 && (
+        {tab === "team" && activeProjects.length > 0 && (
           <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
             <Chip active={!project} onClick={() => setProject(null)} label="All projects" />
-            {projects.map((p) => (
+            {activeProjects.map((p) => (
               <Chip key={p.id} active={project === p.id} onClick={() => setProject(p.id)} label={p.name} color={p.color} />
             ))}
           </div>
@@ -157,14 +204,24 @@ export default function TodosPage() {
 
         {todos === null ? (
           <p className="mt-6 text-muted">Loading your to-dos…</p>
-        ) : todos.length === 0 ? (
+        ) : tab === "team" && !activeProjects.length ? (
+          <div className="mt-14 flex flex-col items-center gap-3 text-center">
+            <Mascot size={100} mood="sleepy" />
+            <p className="font-medium">No team projects yet</p>
+            <p className="max-w-xs text-sm text-muted">
+              Create a project on the home screen and share it with your team. Its tasks show up here for everyone.
+            </p>
+          </div>
+        ) : visible.length === 0 && todos.length === 0 ? (
           <div className="mt-14 flex flex-col items-center gap-3 text-center">
             <Mascot size={100} mood="sleepy" />
             <p className="font-medium">Nothing to do yet</p>
             <p className="max-w-xs text-sm text-muted">
-              Add one above. Or tap “Add to to-dos” next to an action item in a meeting’s AI notes.
+              Add one above, or tap “+ To-do” next to an action item in a meeting’s AI notes.
             </p>
           </div>
+        ) : showDashboard ? (
+          <TodoDashboard todos={visible} projects={activeProjects} showProjects={tab === "team" && !project} />
         ) : (
           <div className="-mx-4 mt-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-4 md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
             {STATUSES.map((s) => (
@@ -184,8 +241,12 @@ export default function TodosPage() {
             ))}
           </div>
         )}
-        <p className="mt-2 hidden text-xs text-muted md:block">Drag cards between columns. Click a card to edit it.</p>
-        <p className="mt-2 text-xs text-muted md:hidden">Press and hold a card to drag it. Swipe sideways for more columns.</p>
+        {!showDashboard && (
+          <>
+            <p className="mt-2 hidden text-xs text-muted md:block">Drag cards between columns. Click a card to edit it.</p>
+            <p className="mt-2 text-xs text-muted md:hidden">Press and hold a card to drag it. Swipe sideways for more columns.</p>
+          </>
+        )}
       </main>
 
       <DragOverlay dropAnimation={null}>
@@ -197,7 +258,7 @@ export default function TodosPage() {
       {editing && (
         <EditSheet
           todo={editing}
-          projects={projects}
+          projects={activeProjects}
           noteTitle={editing.noteId ? noteTitles.get(editing.noteId) : undefined}
           onClose={() => setEditing(null)}
           onSave={(t) => {
@@ -340,7 +401,7 @@ function EditSheet({
           <label className="space-y-1">
             <span className="text-muted">Project</span>
             <select value={t.projectId ?? ""} onChange={(e) => setT({ ...t, projectId: e.target.value || undefined })} className={field}>
-              <option value="">No project</option>
+              <option value="">Private (only me)</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}

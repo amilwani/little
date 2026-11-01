@@ -17,11 +17,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "./AppHeader";
 import { Mascot } from "./Mascot";
+import { ShareProject } from "./ShareProject";
 import { loadIndex, searchDrive, type NoteIndex, type NoteMeta, type Project } from "@/lib/drive";
 import { cache, type PendingNote } from "@/lib/local";
 import {
   createProject,
   deleteProject,
+  leaveProject,
   moveNotes,
   patchNote,
   PROJECT_COLORS,
@@ -210,7 +212,7 @@ export function NotesHome() {
               <ProjectChip
                 key={p.id}
                 dropId={`project:${p.id}`}
-                label={p.name}
+                label={`${p.name}${p.shared ? " 👥" : ""}${p.unavailable ? " (no access)" : ""}`}
                 color={p.color}
                 count={counts.get(p.id) ?? 0}
                 active={projectFilter === p.id}
@@ -232,7 +234,7 @@ export function NotesHome() {
                 onSave={(name, color) => {
                   setCreating(false);
                   act("Creating project", async () => {
-                    const r = await createProject(token!, name, color);
+                    const r = await createProject(token!, name, color, user?.email ?? undefined);
                     setProjectFilter(r.project.id);
                     return r.index;
                   });
@@ -246,6 +248,12 @@ export function NotesHome() {
                 + New project
               </button>
             )}
+            <Link
+              href="/join"
+              className="flex shrink-0 items-center whitespace-nowrap rounded-full px-4 py-2 text-sm text-muted hover:bg-accent-soft md:rounded-xl"
+            >
+              Join shared project
+            </Link>
           </div>
           {dragging && (
             <p className="mt-1 text-xs text-muted md:mt-3">Drop on a project to move {selected.has(dragging.id) && selected.size > 1 ? `${selected.size} notes` : "it"}.</p>
@@ -262,9 +270,9 @@ export function NotesHome() {
               <button
                 onClick={() => setEditingProject((v) => !v)}
                 className="rounded-full px-2 py-1 text-sm text-muted hover:bg-accent-soft"
-                aria-label="Edit project"
+                aria-label="Share and edit project"
               >
-                Edit
+                {currentProject.role === "member" ? "👥 Team" : "👥 Share"}
               </button>
             )}
           </div>
@@ -279,16 +287,33 @@ export function NotesHome() {
                   act("Saving project", () => updateProject(token!, currentProject, { name, color }));
                 }}
               />
-              <button
-                onClick={() => {
-                  if (!confirm(`Delete the project "${currentProject.name}"? Its notes are kept and moved to "No project".`)) return;
-                  setProjectFilter(null);
-                  act("Deleting project", () => deleteProject(token!, currentProject));
-                }}
-                className="mt-2 text-sm text-muted underline"
-              >
-                Delete project
-              </button>
+              {token && <ShareProject token={token} project={currentProject} me={user} onShared={refresh} />}
+              {currentProject.role === "member" ? (
+                <button
+                  onClick={() => {
+                    if (!confirm(`Leave "${currentProject.name}"? It stays in the owner's Drive; you just won't see it here.`)) return;
+                    setProjectFilter(null);
+                    act("Leaving project", () => leaveProject(token!, currentProject));
+                  }}
+                  className="mt-3 text-sm text-muted underline"
+                >
+                  Leave project
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const msg = currentProject.shared
+                      ? `Delete "${currentProject.name}" for everyone? Its notes are kept and moved to "No project" in your Drive, and teammates lose access.`
+                      : `Delete the project "${currentProject.name}"? Its notes are kept and moved to "No project".`;
+                    if (!confirm(msg)) return;
+                    setProjectFilter(null);
+                    act("Deleting project", () => deleteProject(token!, currentProject));
+                  }}
+                  className="mt-3 text-sm text-muted underline"
+                >
+                  Delete project
+                </button>
+              )}
             </div>
           )}
 
