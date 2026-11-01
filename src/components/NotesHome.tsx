@@ -233,13 +233,6 @@ export function NotesHome() {
             <ProjectChip label="All notes" icon="notes" count={index?.notes.length} active={!projectFilter} onClick={() => setProjectFilter(null)} />
             <div className="hidden items-center justify-between px-2.5 pb-1 pt-5 md:flex">
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted">Projects</span>
-              <button
-                onClick={() => setCreating(true)}
-                aria-label="Add project"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-foreground"
-              >
-                <Icon name="plus" size={15} />
-              </button>
             </div>
             {projects.map((p) => (
               <ProjectChip
@@ -384,7 +377,7 @@ export function NotesHome() {
             </div>
           )}
 
-          <div className="mt-5 flex items-center gap-2">
+          <div className={`mt-5 flex items-center gap-2 ${index && index.notes.length === 0 ? "hidden" : ""}`}>
             <label className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 focus-within:border-foreground/30">
               <Icon name="search" size={17} className="text-muted" />
               <input
@@ -447,10 +440,51 @@ export function NotesHome() {
                 ))}
               </div>
             ) : index.notes.length === 0 && pending.length === 0 ? (
-              <div className="mt-14 flex flex-col items-center gap-3 text-center">
-                <Mascot size={96} mood="sleepy" />
-                <p className="font-medium">No notes yet</p>
-                <p className="max-w-xs text-sm text-muted">Press the record button and I&apos;ll start listening.</p>
+              <div className="mt-2">
+                <div className="flex items-center gap-3">
+                  <Mascot size={44} />
+                  <div>
+                    <p className="font-medium">Welcome to Little</p>
+                    <p className="text-sm text-muted">Here&apos;s how to get started.</p>
+                  </div>
+                </div>
+                <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+                  {[
+                    { href: "/notes/new", icon: "mic" as const, title: "Record a meeting", body: "Live transcript now, AI notes after", primary: true },
+                    { href: "/dictate", icon: "pen" as const, title: "Dictate", body: "Talk, then paste clean text anywhere" },
+                    ...(hasCalendar(scope)
+                      ? []
+                      : [{ href: "/meetings", icon: "calendar" as const, title: "Connect your calendar", body: "See meetings and record in one tap" }]),
+                    ...(Object.values(settings.apiKeys ?? {}).some(Boolean)
+                      ? []
+                      : [{ href: "/settings", icon: "sparkles" as const, title: "Turn on AI notes", body: "Add a free Gemini key in a minute" }]),
+                    { href: "#new-project", icon: "users" as const, title: "Start a team project", body: "Share notes and to-dos with your team" },
+                  ].map((a) => (
+                    <li key={a.title}>
+                      <Link
+                        href={a.href}
+                        onClick={(e) => {
+                          if (a.href === "#new-project") {
+                            e.preventDefault();
+                            setCreating(true);
+                          }
+                        }}
+                        className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 transition hover:border-foreground/30"
+                      >
+                        <span
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${a.primary ? "bg-accent text-white" : "bg-subtle"}`}
+                        >
+                          <Icon name={a.icon} size={19} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[15px] font-medium">{a.title}</span>
+                          <span className="block text-[13px] text-muted">{a.body}</span>
+                        </span>
+                        <Icon name="chevronRight" size={16} className="text-muted" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : visible.length === 0 ? (
               <div className="mt-12 flex flex-col items-center gap-3 text-center">
