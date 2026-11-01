@@ -59,7 +59,10 @@ export function AppHeader({
   title,
   focus,
   actions,
+  hideRecord,
 }: {
+  /** Home has its own Record button. */
+  hideRecord?: boolean;
   back?: string;
   title?: string;
   /** Kept for older callers; the header is always full width now. */
@@ -108,7 +111,7 @@ export function AppHeader({
             >
               <Icon name="settings" size={18} />
             </Link>
-            {!focus && (
+            {!focus && !hideRecord && (
               <RecordLink className="ml-1 hidden h-8 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:opacity-90 md:flex">
                 <span className="h-2 w-2 rounded-full bg-accent" />
                 Record

@@ -55,6 +55,17 @@ import { useSettings } from "@/lib/useSettings";
 
 type Tab = "ai" | "notes" | "transcript";
 
+/** Keeps the last notes you opened, for Recent in the sidebar. */
+function rememberRecent(id: string) {
+  try {
+    const list: string[] = JSON.parse(localStorage.getItem("little:recent") ?? "[]");
+    localStorage.setItem("little:recent", JSON.stringify([id, ...list.filter((x) => x !== id)].slice(0, 8)));
+    window.dispatchEvent(new Event("little:recent"));
+  } catch {
+    /* storage blocked */
+  }
+}
+
 export default function NotePageWrapper() {
   return (
     <Suspense>
@@ -114,6 +125,7 @@ function NotePage() {
         }
         setMeta(found);
         setTitle(found.title);
+        rememberRecent(found.id);
         if (found.kind === "written") setTab("notes");
         cache.getIndex().then((i) => setProjects(i?.projects ?? []));
         loadIndex(token)
