@@ -7,6 +7,7 @@
 //     2026-11-01 Team sync/
 //       notes.md                     typed notes (and AI notes later)
 //       transcript.json              transcript with timestamps
+//       ai-notes.md                  AI summary, key points, action items
 //       audio.webm                   the recording
 //
 // We use the `drive.file` scope, so Little can only see files it created.
@@ -27,6 +28,7 @@ export type NoteMeta = {
   notesFileId?: string;
   transcriptFileId?: string;
   audioFileId?: string;
+  aiNotesFileId?: string;
 };
 
 export type TranscriptSegment = {
@@ -255,10 +257,11 @@ export const DEFAULT_SETTINGS: Settings = {
   apiKeys: {},
 };
 
-export async function loadSettings(token: string): Promise<Settings> {
+/** Returns null when there is no settings.json in Drive yet. */
+export async function loadSettings(token: string): Promise<Settings | null> {
   const root = await getRootFolder(token);
   const fileId = await findFileInFolder(token, root, "settings.json");
-  if (!fileId) return DEFAULT_SETTINGS;
+  if (!fileId) return null;
   return { ...DEFAULT_SETTINGS, ...(await readJson<Partial<Settings>>(token, fileId)) };
 }
 

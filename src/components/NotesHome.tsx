@@ -106,12 +106,20 @@ export function NotesHome() {
       </main>
 
       <div className="safe-bottom fixed inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background to-transparent pt-8">
-        <Link
-          href="/notes/new"
-          className="flex items-center gap-2 rounded-full bg-accent px-7 py-4 text-lg font-semibold text-white shadow-lg active:scale-[0.97]"
-        >
-          <span className="inline-block h-3 w-3 rounded-full bg-white" /> New recording
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dictate"
+            className="rounded-full border border-border bg-card px-5 py-4 text-lg font-semibold shadow-lg active:scale-[0.97]"
+          >
+            Dictate
+          </Link>
+          <Link
+            href="/notes/new"
+            className="flex items-center gap-2 rounded-full bg-accent px-7 py-4 text-lg font-semibold text-white shadow-lg active:scale-[0.97]"
+          >
+            <span className="inline-block h-3 w-3 rounded-full bg-white" /> Record meeting
+          </Link>
+        </div>
       </div>
     </>
   );
