@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { KeyNeeded } from "@/components/KeyNeeded";
 import { Markdown } from "@/components/Markdown";
 import { Mascot } from "@/components/Mascot";
+import { Icon } from "@/components/Icon";
+import { Menu } from "@/components/Menu";
 import { TranscriptView } from "@/components/TranscriptView";
 import {
   AiError,
@@ -442,229 +445,292 @@ function NotePage() {
     }
   };
 
+  // Messages show as a toast for a few seconds.
+  useEffect(() => {
+    if (!message || !meta) return;
+    const t = setTimeout(() => setMessage(null), 4500);
+    return () => clearTimeout(t);
+  }, [message, meta]);
+
+  // Ctrl/⌘ S saves.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "ai", label: "AI notes" },
     { id: "notes", label: "My notes" },
     { id: "transcript", label: "Transcript" },
   ];
 
+  const project = meta?.projectId ? projects.find((p) => p.id === meta.projectId) : undefined;
+  const template = meta ? getTemplate(meta.template) : null;
+  const pill = "h-8 rounded-lg border border-border bg-card px-2.5 text-[13px] hover:border-foreground/30";
+  const toolBtn = "flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted hover:bg-subtle hover:text-foreground disabled:opacity-40";
+
   return (
     <>
-      <AppHeader back="/" />
-      <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
-        {message && (
-          <p className="mb-4 rounded-xl bg-accent-soft px-4 py-3 text-sm">
+      <AppHeader
+        back={meta?.projectId ? `/?p=${meta.projectId}` : "/"}
+        title={project?.name}
+        actions={
+          meta && (
+            <div className="flex items-center">
+              <button
+                onClick={() => patch({ pinned: !meta.pinned })}
+                aria-label={meta.pinned ? "Unpin" : "Pin"}
+                aria-pressed={!!meta.pinned}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg hover:bg-subtle ${meta.pinned ? "text-accent" : "text-muted"}`}
+              >
+                <Icon name="pin" size={18} />
+              </button>
+              <Menu
+                label="Share"
+                icon="share"
+                items={[
+                  { label: "Share…", icon: "share", onClick: shareNote },
+                  { label: "Email", icon: "mail", onClick: emailNote },
+                  { label: exporting ? "Creating doc…" : "Save as Google Doc", icon: "doc", onClick: exportDoc, disabled: exporting },
+                ]}
+              />
+              <Menu label="More" items={[{ label: "Delete note", icon: "trash", onClick: remove, danger: true }]} />
+            </div>
+          )
+        }
+      />
+      <main className="pb-nav mx-auto max-w-3xl px-4 pt-6 md:pt-10">
+        {message && !meta && <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{message}</p>}
+        {message && meta && (
+          <p role="status" className="animate-pop fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background shadow-lg">
             {message}
           </p>
         )}
         {!meta ? (
-          !message && <p className="text-muted">Loading…</p>
+          !message && (
+            <div className="space-y-3" aria-label="Loading">
+              <div className="h-8 w-2/3 animate-pulse rounded-lg bg-subtle" />
+              <div className="h-4 w-1/3 animate-pulse rounded bg-subtle" />
+              <div className="mt-8 h-48 animate-pulse rounded-2xl bg-subtle" />
+            </div>
+          )
         ) : (
           <>
+            <nav aria-label="Breadcrumb" className="mb-3 hidden items-center gap-1 text-sm text-muted md:flex">
+              <Link href="/" className="hover:text-foreground">
+                Notes
+              </Link>
+              {project && (
+                <>
+                  <Icon name="chevronRight" size={14} />
+                  <Link href={`/?p=${project.id}`} className="flex items-center gap-1.5 hover:text-foreground">
+                    <span className="h-2 w-2 rounded-full" style={{ background: project.color }} />
+                    {project.name}
+                  </Link>
+                </>
+              )}
+            </nav>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent text-2xl font-bold outline-none"
+              className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none"
               aria-label="Title"
             />
-            <p className="mt-1 text-sm text-muted">
-              {new Date(meta.createdAt).toLocaleString()} ·{" "}
-              {formatDuration(meta.durationSec * 1000)} ·{" "}
-              {langInfo(meta.language).native}
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+              <span>{new Date(meta.createdAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span>
+              <span aria-hidden>·</span>
+              <span>{formatDuration(meta.durationSec * 1000)}</span>
+              <span aria-hidden>·</span>
+              <span>{langInfo(meta.language).native}</span>
+              {meta.attendees?.length ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="flex items-center gap-1">
+                    <Icon name="users" size={14} /> {meta.attendees.join(", ")}
+                  </span>
+                </>
+              ) : null}
             </p>
-            {meta.attendees?.length ? (
-              <p className="mt-1 text-sm text-muted">
-                📅 With {meta.attendees.join(", ")}
-              </p>
-            ) : null}
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <button
-                onClick={() => patch({ pinned: !meta.pinned })}
-                className={`rounded-full border px-3 py-1 ${meta.pinned ? "border-accent bg-accent-soft" : "border-border"}`}
-              >
-                📌 {meta.pinned ? "Pinned" : "Pin"}
-              </button>
-              <select
-                aria-label="Project"
-                value={meta.projectId ?? ""}
-                onChange={(e) => changeProject(e.target.value)}
-                className="rounded-full border border-border bg-card px-3 py-1"
-              >
-                <option value="">📁 No project</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    📁 {p.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Meeting type"
-                value={getTemplate(meta.template).id}
-                onChange={(e) => patch({ template: e.target.value })}
-                className="rounded-full border border-border bg-card px-3 py-1"
-              >
-                {TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.emoji} {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <div className="mt-4 flex flex-wrap items-center gap-1.5">
+              <label className={`flex items-center gap-1.5 ${pill}`}>
+                {project ? <span className="h-2 w-2 rounded-full" style={{ background: project.color }} /> : <Icon name="folder" size={14} className="text-muted" />}
+                <select
+                  aria-label="Project"
+                  value={meta.projectId ?? ""}
+                  onChange={(e) => changeProject(e.target.value)}
+                  className="h-full cursor-pointer appearance-none bg-transparent pr-0.5 outline-none"
+                >
+                  <option value="">No project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <Icon name="chevronDown" size={13} className="pointer-events-none -ml-1 text-muted" />
+              </label>
+              <label className={`flex items-center gap-1.5 ${pill}`}>
+                <Icon name="notes" size={14} className="text-muted" />
+                <select
+                  aria-label="Meeting type"
+                  value={template!.id}
+                  onChange={(e) => patch({ template: e.target.value })}
+                  className="h-full cursor-pointer appearance-none bg-transparent pr-0.5 outline-none"
+                >
+                  {TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <Icon name="chevronDown" size={13} className="pointer-events-none -ml-1 text-muted" />
+              </label>
               {meta.tags?.map((t) => (
                 <button
                   key={t}
-                  onClick={() =>
-                    patch({ tags: meta.tags?.filter((x) => x !== t) })
-                  }
-                  className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs"
+                  onClick={() => patch({ tags: meta.tags?.filter((x) => x !== t) })}
+                  className="group flex h-8 items-center gap-1 rounded-lg bg-subtle px-2.5 text-[13px]"
                   aria-label={`Remove tag ${t}`}
                 >
-                  #{t} ×
+                  #{t}
+                  <Icon name="close" size={12} className="text-muted group-hover:text-foreground" />
                 </button>
               ))}
-              <form onSubmit={addTag}>
-                <input
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  placeholder="+ tag"
-                  className="w-20 rounded-full bg-transparent px-2 py-0.5 text-xs outline-none focus:w-32 focus:bg-card"
-                />
+              <form onSubmit={addTag} className="flex">
+                <label className="flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] text-muted focus-within:bg-card focus-within:ring-1 focus-within:ring-border">
+                  <Icon name="tag" size={14} />
+                  <input
+                    value={tagDraft}
+                    onChange={(e) => setTagDraft(e.target.value)}
+                    placeholder="Add tag"
+                    aria-label="Add tag"
+                    className="w-16 bg-transparent outline-none placeholder:text-muted focus:w-28"
+                  />
+                </label>
               </form>
             </div>
 
-            <div className="mt-4">
-              {audioUrl ? (
-                <audio
-                  ref={audioRef}
-                  controls
-                  src={audioUrl}
-                  className="w-full"
-                  onLoadedMetadata={(e) => {
-                    if (pendingSeek.current === null) return;
-                    e.currentTarget.currentTime = pendingSeek.current;
-                    pendingSeek.current = null;
-                    e.currentTarget.play().catch(() => {});
-                  }}
-                  onTimeUpdate={(e) => setPlaySec(e.currentTarget.currentTime)}
-                />
-              ) : meta.audioFileId ? (
-                <button
-                  onClick={playAudio}
-                  disabled={loadingAudio}
-                  className="rounded-full border border-border px-4 py-2 text-sm font-medium"
-                >
-                  {loadingAudio ? "Loading recording…" : "▶ Play recording"}
-                </button>
-              ) : null}
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                onClick={shareNote}
-                className="rounded-full border border-border px-3 py-1.5 text-sm"
-              >
-                ↗ Share
-              </button>
-              <button
-                onClick={emailNote}
-                className="rounded-full border border-border px-3 py-1.5 text-sm"
-              >
-                ✉ Email
-              </button>
-              <button
-                onClick={exportDoc}
-                disabled={exporting}
-                className="rounded-full border border-border px-3 py-1.5 text-sm disabled:opacity-50"
-              >
-                {exporting ? "Creating doc…" : "📄 Google Docs"}
-              </button>
-            </div>
+            {(audioUrl || meta.audioFileId) && (
+              <div className="mt-4">
+                {audioUrl ? (
+                  <audio
+                    ref={audioRef}
+                    controls
+                    src={audioUrl}
+                    className="h-10 w-full"
+                    onLoadedMetadata={(e) => {
+                      if (pendingSeek.current === null) return;
+                      e.currentTarget.currentTime = pendingSeek.current;
+                      pendingSeek.current = null;
+                      e.currentTarget.play().catch(() => {});
+                    }}
+                    onTimeUpdate={(e) => setPlaySec(e.currentTarget.currentTime)}
+                  />
+                ) : (
+                  <button
+                    onClick={playAudio}
+                    disabled={loadingAudio}
+                    className="flex h-10 items-center gap-2 rounded-full border border-border bg-card pl-1.5 pr-4 text-sm hover:border-foreground/30"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background">
+                      <Icon name="play" size={11} />
+                    </span>
+                    {loadingAudio ? "Loading recording…" : "Play recording"}
+                  </button>
+                )}
+              </div>
+            )}
 
             {aiBusy && (
-              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm">
-                <Mascot size={36} mood="listening" />
+              <div className="mt-5 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+                <Mascot size={32} mood="listening" />
                 <span>{aiBusy}…</span>
               </div>
             )}
-            {aiError && (
-              <p className="mt-4 rounded-xl bg-accent-soft px-4 py-3 text-sm">
-                {aiError}
-              </p>
-            )}
+            {aiError && <p className="mt-5 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{aiError}</p>}
             {showKeyNeeded && (
-              <div className="mt-4">
-                <KeyNeeded
-                  feature={
-                    showKeyNeeded === "notes" ? "AI notes" : "AI transcripts"
-                  }
-                  audio={showKeyNeeded === "transcript"}
-                />
+              <div className="mt-5">
+                <KeyNeeded feature={showKeyNeeded === "notes" ? "AI notes" : "AI transcripts"} audio={showKeyNeeded === "transcript"} />
               </div>
             )}
 
-            <div className="mt-6 flex gap-1 border-b border-border">
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-                    tab === t.id
-                      ? "border-accent"
-                      : "border-transparent text-muted"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <div className="mt-8 flex items-center justify-between gap-3 border-b border-border">
+              <div role="tablist" className="flex gap-5">
+                {tabs.map((t) => (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={tab === t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`-mb-px border-b-2 pb-2.5 text-sm ${tab === t.id ? "border-foreground font-medium" : "border-transparent text-muted hover:text-foreground"}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {tab === "ai" && aiNotes && (
+                <div className="-mt-1.5 flex items-center">
+                  <label className={`${toolBtn} relative`} title="Translate">
+                    <Icon name="globe" size={15} />
+                    <span className="hidden sm:inline">Translate</span>
+                    <select
+                      aria-label="Translate"
+                      value=""
+                      disabled={!!aiBusy}
+                      onChange={(e) => translate(e.target.value)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    >
+                      <option value="">Translate into…</option>
+                      {LANGUAGES.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {l.native} · {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button onClick={() => copy(translated?.text ?? aiNotes, "AI notes")} className={toolBtn} title="Copy">
+                    <Icon name="copy" size={15} />
+                    <span className="hidden sm:inline">Copy</span>
+                  </button>
+                  <button onClick={onWriteNotes} disabled={!!aiBusy} className={toolBtn} title={`Rewrite as ${template!.name}`}>
+                    <Icon name="refresh" size={15} />
+                    <span className="hidden sm:inline">Rewrite</span>
+                  </button>
+                </div>
+              )}
+              {tab === "transcript" && (
+                <div className="-mt-1.5 flex items-center">
+                  {meta.audioFileId && transcript?.source === "browser" && (
+                    <button onClick={onImproveTranscript} disabled={!!aiBusy} className={toolBtn}>
+                      <Icon name="sparkles" size={15} /> Improve
+                    </button>
+                  )}
+                  <button onClick={() => transcript && copy(transcriptToText(transcript), "Transcript")} className={toolBtn}>
+                    <Icon name="copy" size={15} />
+                    <span className="hidden sm:inline">Copy</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {tab === "ai" && (
-              <section className="mt-4 rounded-2xl border border-border bg-card p-4">
+              <section className="mt-6">
                 {aiNotes ? (
                   <>
-                    <div className="mb-3 flex flex-wrap justify-end gap-2">
-                      <select
-                        aria-label="Translate"
-                        value=""
-                        disabled={!!aiBusy}
-                        onChange={(e) => translate(e.target.value)}
-                        className="rounded-full border border-border bg-card px-2 py-1 text-xs font-medium"
-                      >
-                        <option value="">🌐 Translate…</option>
-                        {LANGUAGES.map((l) => (
-                          <option key={l.code} value={l.code}>
-                            {l.native} · {l.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() =>
-                          copy(translated?.text ?? aiNotes, "AI notes")
-                        }
-                        className="rounded-full border border-border px-3 py-1 text-xs font-medium"
-                      >
-                        Copy
-                      </button>
-                      <button
-                        onClick={onWriteNotes}
-                        disabled={!!aiBusy}
-                        className="rounded-full border border-border px-3 py-1 text-xs font-medium disabled:opacity-40"
-                      >
-                        Rewrite as {getTemplate(meta.template).name}
-                      </button>
-                    </div>
                     {translated && (
-                      <div className="mb-4 rounded-xl bg-background p-3">
-                        <div className="mb-2 flex items-center justify-between text-xs text-muted">
-                          <span>
-                            Translated into {langInfo(translated.lang).name}
-                          </span>
-                          <button
-                            onClick={() => setTranslated(null)}
-                            className="underline"
-                          >
+                      <div className="mb-4">
+                        <div className="mb-3 flex items-center justify-between rounded-lg bg-subtle px-3 py-2 text-xs text-muted">
+                          <span>Translated into {langInfo(translated.lang).name}</span>
+                          <button onClick={() => setTranslated(null)} className="font-medium text-foreground">
                             Show original
                           </button>
                         </div>
@@ -676,18 +742,16 @@ function NotePage() {
                         source={aiNotes}
                         onToggleTask={tickTask}
                         taskExtra={(text) =>
-                          /^none mentioned/i.test(text) ? null : onBoard.has(
-                              parseAction(text).title.toLowerCase(),
-                            ) ? (
-                            <span className="shrink-0 self-start whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] text-muted">
-                              ✓ In to-dos
+                          /^none mentioned/i.test(text) ? null : onBoard.has(parseAction(text).title.toLowerCase()) ? (
+                            <span className="flex shrink-0 items-center gap-1 self-start whitespace-nowrap px-2 py-0.5 text-[11px] text-muted">
+                              <Icon name="check" size={12} /> In to-dos
                             </span>
                           ) : (
                             <button
                               onClick={() => addToTodos(text)}
-                              className="shrink-0 self-start whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-[11px] font-medium hover:border-accent"
+                              className="flex shrink-0 items-center gap-1 self-start whitespace-nowrap rounded-md border border-border bg-card px-2 py-0.5 text-[11px] font-medium hover:border-foreground/30"
                             >
-                              + To-do
+                              <Icon name="plus" size={12} /> To-do
                             </button>
                           )
                         }
@@ -695,18 +759,17 @@ function NotePage() {
                     )}
                   </>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 py-6 text-center">
-                    <Mascot size={72} />
+                  <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border py-10 text-center">
+                    <Mascot size={64} />
                     <p className="max-w-xs text-sm text-muted">
-                      I can turn the transcript and your notes into a summary,
-                      key points and action items.
+                      I can turn the transcript and your notes into a {template!.name.toLowerCase()} write-up with action items.
                     </p>
                     <button
                       onClick={onWriteNotes}
                       disabled={!!aiBusy}
-                      className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white disabled:opacity-40"
+                      className="flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-40"
                     >
-                      ✨ Write AI notes
+                      <Icon name="sparkles" size={16} /> Write AI notes
                     </button>
                   </div>
                 )}
@@ -714,52 +777,26 @@ function NotePage() {
             )}
 
             {tab === "notes" && (
-              <section className="mt-4">
+              <section className="mt-6">
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Your own notes for this recording."
-                  className="min-h-72 w-full resize-y rounded-2xl border border-border bg-card p-4 leading-relaxed outline-none focus:border-accent"
+                  placeholder="Write your own notes for this meeting…"
+                  className="min-h-80 w-full resize-y bg-transparent leading-relaxed outline-none placeholder:text-muted"
                 />
               </section>
             )}
 
             {tab === "transcript" && (
-              <section className="mt-4 rounded-2xl border border-border bg-card p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs text-muted">
-                    {transcript?.source === "gemini"
-                      ? "AI transcript (Gemini)"
-                      : transcript?.source === "openai"
-                        ? "AI transcript (OpenAI)"
-                        : "Live transcript from your browser"}
-                  </span>
-                  <div className="flex gap-2">
-                    {meta.audioFileId && transcript?.source === "browser" && (
-                      <button
-                        onClick={onImproveTranscript}
-                        disabled={!!aiBusy}
-                        className="rounded-full border border-border px-3 py-1 text-xs font-medium disabled:opacity-40"
-                      >
-                        ✨ Improve with AI
-                      </button>
-                    )}
-                    <button
-                      onClick={() =>
-                        transcript &&
-                        copy(transcriptToText(transcript), "Transcript")
-                      }
-                      className="rounded-full border border-border px-3 py-1 text-xs font-medium"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-                {meta.audioFileId && (
-                  <p className="mb-2 text-xs text-muted">
-                    Tap a line to play the recording from there.
-                  </p>
-                )}
+              <section className="mt-6">
+                <p className="mb-3 text-xs text-muted">
+                  {transcript?.source === "gemini"
+                    ? "AI transcript (Gemini)"
+                    : transcript?.source === "openai"
+                      ? "AI transcript (OpenAI)"
+                      : "Live transcript from your browser"}
+                  {meta.audioFileId && " · Tap a line to play from there"}
+                </p>
                 <TranscriptView
                   segments={transcript?.segments ?? []}
                   onSeek={meta.audioFileId ? seek : undefined}
@@ -768,18 +805,16 @@ function NotePage() {
               </section>
             )}
 
-            <div className="mt-6 flex items-center justify-between">
-              <button onClick={remove} className="text-sm text-muted underline">
-                Delete note
-              </button>
-              <button
-                onClick={save}
-                disabled={!dirty || saving}
-                className="rounded-full bg-accent px-6 py-2.5 font-semibold text-white disabled:opacity-40"
-              >
-                {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
-              </button>
-            </div>
+            {(dirty || saving) && (
+              <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 md:bottom-8">
+                <div className="animate-pop flex items-center gap-3 rounded-full bg-foreground py-1.5 pl-4 pr-1.5 text-sm text-background shadow-2xl">
+                  <span>Unsaved changes</span>
+                  <button onClick={save} disabled={saving} className="rounded-full bg-background px-4 py-1.5 font-medium text-foreground disabled:opacity-60">
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

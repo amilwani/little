@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { Icon } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
 import { CalendarError, connectCalendar, hasCalendar, listEvents, rememberEvent, type CalendarEvent } from "@/lib/calendar";
 import { loadIndex, type NoteMeta } from "@/lib/drive";
@@ -95,8 +96,8 @@ export default function MeetingsPage() {
 
   return (
     <>
-      <AppHeader back="/" title="Meetings" wide />
-      <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
+      <AppHeader />
+      <main className="pb-nav mx-auto max-w-3xl px-4 pt-5 md:pt-8">
         {!connected || needsConnect ? (
           <div className="mt-10 flex flex-col items-center gap-3 text-center">
             <Mascot size={110} />
@@ -105,29 +106,37 @@ export default function MeetingsPage() {
               Connect Google Calendar and I&apos;ll list your meetings, start notes with the right title and people, and
               link each note back to its meeting. I can only read your calendar, never change it.
             </p>
-            <button onClick={() => connectCalendar()} className="rounded-full bg-accent px-6 py-3 font-semibold text-white">
+            <button onClick={() => connectCalendar()} className="mt-2 flex items-center gap-2 rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-background">
+              <Icon name="calendar" size={16} />
               Connect Google Calendar
             </button>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted">From your Google Calendar</p>
-              <div className="flex rounded-full border border-border bg-card p-0.5 text-sm">
+              <div>
+                <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Meetings</h1>
+                <p className="mt-0.5 text-sm text-muted">From your Google Calendar</p>
+              </div>
+              <div className="flex shrink-0 rounded-lg bg-subtle p-0.5 text-sm">
                 {(["week", "month"] as const).map((r) => (
                   <button
                     key={r}
                     onClick={() => setRange(r)}
-                    className={`rounded-full px-3 py-1 ${range === r ? "bg-accent-soft font-medium" : "text-muted"}`}
+                    className={`whitespace-nowrap rounded-md px-3 py-1 font-medium ${range === r ? "bg-card shadow-sm" : "text-muted"}`}
                   >
-                    {r === "week" ? "± 1 week" : "± 1 month"}
+                    {r === "week" ? "Week" : "Month"}
                   </button>
                 ))}
               </div>
             </div>
-            {error && <p className="mt-3 rounded-xl bg-accent-soft px-4 py-3 text-sm">{error}</p>}
+            {error && <p className="mt-3 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{error}</p>}
             {events === null ? (
-              <p className="mt-6 text-muted">Loading your meetings…</p>
+              <div className="mt-6 space-y-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-16 animate-pulse rounded-2xl bg-subtle" />
+                ))}
+              </div>
             ) : events.length === 0 ? (
               <p className="mt-10 text-center text-sm text-muted">No meetings in this range.</p>
             ) : (
@@ -156,12 +165,12 @@ function Section({
 }) {
   if (!groups.length) return null;
   return (
-    <section className="mt-6">
-      <h2 className="text-lg font-bold">{title}</h2>
+    <section className="mt-8">
+      <h2 className="text-[15px] font-semibold">{title}</h2>
       {groups.map(([day, list]) => (
-        <div key={day} className="mt-3">
-          <h3 className="mb-1.5 text-sm font-medium text-muted">{dayLabel(day)}</h3>
-          <ul className="space-y-2">
+        <div key={day} className="mt-4">
+          <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">{dayLabel(day)}</h3>
+          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
             {list.map((e) => (
               <EventRow key={e.id} event={e} note={noteByEvent.get(e.id)} now={now} />
             ))}
@@ -176,47 +185,64 @@ function EventRow({ event: e, note, now }: { event: CalendarEvent; note?: NoteMe
   const live = !e.allDay && new Date(e.start).getTime() - 10 * 60e3 <= now && new Date(e.end).getTime() >= now;
   const ended = new Date(e.end).getTime() < now;
   const others = e.attendees.filter((a) => !a.self);
+  const time = e.allDay ? "All day" : new Date(e.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return (
-    <li className={`rounded-2xl border bg-card px-4 py-3 ${live ? "border-accent" : "border-border"}`}>
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            {live && <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase text-white">Now</span>}
-            <span className="font-medium">{e.title}</span>
-          </div>
-          <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted">
-            <span>{timeRange(e)}</span>
-            {others.length > 0 && (
-              <span title={others.map((a) => a.name ?? a.email).join(", ")}>
-                · {others.length === 1 ? (others[0].name ?? others[0].email) : `${others.length} people`}
-              </span>
-            )}
-            {e.meetLink && (
-              <a href={e.meetLink} target="_blank" rel="noreferrer" className="underline">
-                · Join Meet
-              </a>
-            )}
-            <a href={e.htmlLink} target="_blank" rel="noreferrer" className="underline">
-              · Calendar
-            </a>
-          </div>
-        </div>
-        {note ? (
-          <Link href={`/notes/${note.id}`} className="shrink-0 rounded-full border border-accent bg-accent-soft px-3 py-1.5 text-sm font-medium">
-            📝 Notes
-          </Link>
+    <li className={`flex items-center gap-3 px-4 py-3 ${live ? "bg-accent-soft/60" : ""}`}>
+      <div className="w-16 shrink-0 text-xs tabular-nums text-muted">
+        {live ? (
+          <span className="flex items-center gap-1.5 font-medium text-accent">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" /> Now
+          </span>
         ) : (
-          <Link
-            href={`/notes/new?event=${encodeURIComponent(e.id)}`}
-            onClick={() => rememberEvent(e)}
-            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium ${
-              ended ? "border border-border" : "bg-accent text-white"
-            }`}
-          >
-            {ended ? "Add notes" : "● Record"}
-          </Link>
+          time
         )}
       </div>
+      <div className="min-w-0 flex-1">
+        <div className={`truncate text-[15px] font-medium ${ended && !note ? "text-muted" : ""}`}>{e.title}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 text-xs text-muted">
+          <span>{timeRange(e)}</span>
+          {others.length > 0 && (
+            <span className="flex items-center gap-1" title={others.map((a) => a.name ?? a.email).join(", ")}>
+              <Icon name="users" size={12} />
+              {others.length === 1 ? (others[0].name ?? others[0].email) : `${others.length} people`}
+            </span>
+          )}
+          {e.meetLink && (
+            <a href={e.meetLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-foreground">
+              <Icon name="video" size={12} /> Join
+            </a>
+          )}
+          <a href={e.htmlLink} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-foreground">
+            <Icon name="calendar" size={12} /> Open
+          </a>
+        </div>
+      </div>
+      {note ? (
+        <Link
+          href={`/notes/${note.id}`}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium hover:border-foreground/30"
+        >
+          <Icon name="notes" size={15} /> Notes
+        </Link>
+      ) : (
+        <Link
+          href={`/notes/new?event=${encodeURIComponent(e.id)}`}
+          onClick={() => rememberEvent(e)}
+          className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium ${
+            ended ? "text-muted hover:bg-subtle hover:text-foreground" : "bg-foreground text-background"
+          }`}
+        >
+          {ended ? (
+            <>
+              <Icon name="plus" size={15} /> Notes
+            </>
+          ) : (
+            <>
+              <span className="h-2 w-2 rounded-full bg-accent" /> Record
+            </>
+          )}
+        </Link>
+      )}
     </li>
   );
 }

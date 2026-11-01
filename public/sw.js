@@ -2,7 +2,7 @@
 // open offline. Notes themselves are cached in IndexedDB by the app, and
 // Google/AI API calls are never cached here.
 
-const CACHE = "little-shell-v5";
+const CACHE = "little-shell-v6";
 const SHELL = ["/", "/notes/new", "/dictate", "/todos", "/meetings", "/ask", "/settings", "/manifest.webmanifest", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {

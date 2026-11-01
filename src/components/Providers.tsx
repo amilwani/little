@@ -2,6 +2,8 @@
 
 import { SessionProvider } from "next-auth/react";
 import { useEffect } from "react";
+import { CommandPalette } from "./CommandPalette";
+import { NavHistory } from "./NavHistory";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -9,5 +11,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
   }, []);
-  return <SessionProvider>{children}</SessionProvider>;
+  return (
+    <SessionProvider>
+      <NavHistory />
+      {children}
+      <CommandPalette />
+    </SessionProvider>
+  );
 }

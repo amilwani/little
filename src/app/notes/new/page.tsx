@@ -4,10 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { LanguageToggle, type Lang } from "@/components/LanguageToggle";
+import { Icon } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
 import { TranscriptView } from "@/components/TranscriptView";
 import { cache, type PendingNote } from "@/lib/local";
 import { saveNoteToDrive } from "@/lib/notes";
+import { langInfo } from "@/lib/languages";
 import { formatDuration, useRecorder } from "@/lib/recorder";
 import { useLiveTranscript } from "@/lib/speech";
 import { useAccessToken } from "@/lib/useAccessToken";
@@ -154,83 +156,92 @@ function NewRecording() {
 
   const active = recorder.state === "recording" || recorder.state === "paused";
 
+  const currentProject = projects.find((p) => p.id === projectId);
+
   return (
     <>
-      <AppHeader back="/" title="New recording" />
-      <main className="mx-auto flex max-w-3xl flex-col gap-4 px-4 pb-40 pt-4">
+      <AppHeader back="/" title={active ? "Recording" : "New recording"} focus />
+      <main className="mx-auto flex max-w-3xl flex-col gap-5 px-4 pb-44 pt-6 md:pt-10">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Title (optional)"
-          className="w-full rounded-xl border border-border bg-card px-4 py-3 text-lg font-medium outline-none focus:border-accent"
+          placeholder="Untitled meeting"
+          aria-label="Title"
+          className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none placeholder:text-foreground/25"
         />
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="-mt-2 flex flex-wrap items-center gap-2">
           <LanguageToggle value={lang} onChange={changeLang} />
-          {!live.supported && (
-            <span className="text-xs text-muted">Live transcript isn&apos;t available in this browser. Try Chrome.</span>
+          {projects.length > 0 && (
+            <label className="flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[13px] hover:border-foreground/30">
+              {currentProject ? (
+                <span className="h-2 w-2 rounded-full" style={{ background: currentProject.color }} />
+              ) : (
+                <Icon name="folder" size={14} className="text-muted" />
+              )}
+              <select
+                aria-label="Project"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="h-full cursor-pointer appearance-none bg-transparent outline-none"
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevronDown" size={13} className="pointer-events-none text-muted" />
+            </label>
           )}
+          {!live.supported && <span className="text-xs text-muted">Live transcript needs Chrome or Safari.</span>}
         </div>
 
-        {recorder.error && <p className="rounded-xl bg-accent-soft px-4 py-3 text-sm">{recorder.error}</p>}
+        {recorder.error && <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm">{recorder.error}</p>}
         {live.error && live.error !== "network" && (
-          <p className="rounded-xl bg-accent-soft px-4 py-3 text-sm">Transcript paused ({live.error}). Recording continues.</p>
+          <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">Transcript paused ({live.error}). Recording continues.</p>
         )}
 
         {recorder.state === "idle" ? (
-          <>
-            <section>
-              <h2 className="mb-2 text-sm font-medium text-muted">What kind of meeting?</h2>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {TEMPLATES.map((t) => (
+          <section className="mt-2">
+            <h2 className="mb-2.5 text-xs font-medium uppercase tracking-wide text-muted">Meeting type</h2>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {TEMPLATES.map((t) => {
+                const on = template === t.id;
+                return (
                   <button
                     key={t.id}
                     onClick={() => pickTemplate(t.id)}
-                    className={`rounded-2xl border px-3 py-2.5 text-left transition ${
-                      template === t.id ? "border-accent bg-accent-soft" : "border-border bg-card hover:border-accent"
+                    aria-pressed={on}
+                    className={`flex items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
+                      on ? "border-foreground bg-card ring-1 ring-foreground" : "border-border bg-card hover:border-foreground/30"
                     }`}
                   >
-                    <div className="text-sm font-medium">
-                      {t.emoji} {t.name}
-                    </div>
-                    <div className="mt-0.5 text-xs leading-snug text-muted">{t.blurb}</div>
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${on ? "border-foreground bg-foreground" : "border-foreground/25"}`}
+                    >
+                      {on && <span className="h-1.5 w-1.5 rounded-full bg-background" />}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-medium">{t.name}</span>
+                      <span className="mt-0.5 block text-xs leading-snug text-muted">{t.blurb}</span>
+                    </span>
                   </button>
-                ))}
-              </div>
-            </section>
-            {projects.length > 0 && (
-              <label className="flex items-center gap-3 text-sm">
-                <span className="text-muted">Project</span>
-                <select
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="rounded-xl border border-border bg-card px-3 py-2 outline-none focus:border-accent"
-                >
-                  <option value="">No project</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <div className="mt-4 flex flex-col items-center gap-3 text-center">
-              <Mascot size={96} />
-              <p className="max-w-xs text-sm text-muted">
-                Ready when you are. Keep this screen open while recording, especially on iPhone.
-              </p>
+                );
+              })}
             </div>
-          </>
+            <p className="mt-5 text-center text-xs text-muted">Keep this screen open while recording, especially on iPhone.</p>
+          </section>
         ) : (
           <>
             {/* Phones: tabs. Larger screens: side by side. */}
-            <div className="flex gap-2 md:hidden">
+            <div className="flex rounded-lg bg-subtle p-0.5 md:hidden">
               {(["transcript", "notes"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`flex-1 rounded-xl py-2 text-sm font-medium ${tab === t ? "bg-accent-soft" : "text-muted"}`}
+                  className={`flex-1 rounded-md py-1.5 text-sm font-medium ${tab === t ? "bg-card shadow-sm" : "text-muted"}`}
                 >
                   {t === "transcript" ? "Transcript" : "My notes"}
                 </button>
@@ -238,27 +249,31 @@ function NewRecording() {
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <section className={`${tab === "transcript" ? "" : "hidden"} min-h-64 rounded-2xl border border-border bg-card p-4 md:block`}>
-                <h2 className="mb-3 hidden text-sm font-medium text-muted md:block">Transcript</h2>
+                <h2 className="mb-3 hidden text-xs font-medium uppercase tracking-wide text-muted md:block">Live transcript</h2>
                 <TranscriptView segments={live.segments} interim={live.interim} />
               </section>
               <section className={`${tab === "notes" ? "" : "hidden"} rounded-2xl border border-border bg-card p-4 md:block`}>
-                <h2 className="mb-3 hidden text-sm font-medium text-muted md:block">My notes</h2>
+                <h2 className="mb-3 hidden text-xs font-medium uppercase tracking-wide text-muted md:block">My notes</h2>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Jot down anything important…"
-                  className="min-h-64 w-full resize-y bg-transparent leading-relaxed outline-none"
+                  className="min-h-64 w-full resize-y bg-transparent leading-relaxed outline-none placeholder:text-muted"
                 />
               </section>
             </div>
           </>
         )}
 
-        {saving && <p className="text-center text-sm text-muted">{saving}…</p>}
+        {saving && (
+          <div className="flex items-center justify-center gap-3 text-sm text-muted">
+            <Mascot size={32} mood="listening" /> {saving}…
+          </div>
+        )}
         {saveError && (
-          <div className="rounded-xl bg-accent-soft px-4 py-3 text-sm">
+          <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
             {saveError}{" "}
-            <button className="font-semibold underline" onClick={() => router.replace("/")}>
+            <button className="font-medium underline" onClick={() => router.replace("/")}>
               Back to notes
             </button>
           </div>
@@ -266,33 +281,40 @@ function NewRecording() {
       </main>
 
       {recorder.state !== "stopped" && (
-        <div className="safe-bottom fixed inset-x-0 bottom-0 border-t border-border bg-background/95 pt-3 backdrop-blur">
+        <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/90 pt-4 backdrop-blur-md">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6">
-            <div className="flex items-center gap-2">
-              {active && <Mascot size={40} mood={recorder.state === "recording" ? "listening" : "sleepy"} />}
-              <span className="font-mono text-xl tabular-nums">{formatDuration(recorder.elapsedMs)}</span>
+            <div className="flex min-w-24 items-center gap-2.5">
+              {recorder.state === "recording" && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent" />}
+              {recorder.state === "paused" && <span className="h-2.5 w-2.5 rounded-full bg-muted" />}
+              <span className="text-xl font-medium tabular-nums">{formatDuration(recorder.elapsedMs)}</span>
             </div>
-            <div className="flex items-center gap-3">
-              {recorder.state === "idle" && (
-                <button onClick={start} className="rounded-full bg-accent px-7 py-3.5 font-semibold text-white shadow active:scale-[0.97]">
-                  Start recording
+            {recorder.state === "idle" && (
+              <button
+                onClick={start}
+                aria-label="Start recording"
+                className="flex h-16 w-16 items-center justify-center rounded-full bg-accent text-white shadow-[0_8px_24px_-8px_rgba(220,90,69,0.8)] transition active:scale-95"
+              >
+                <Icon name="mic" size={28} strokeWidth={2} />
+              </button>
+            )}
+            {active && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={recorder.state === "recording" ? pause : resume}
+                  className="h-12 rounded-full border border-border bg-card px-5 text-sm font-medium"
+                >
+                  {recorder.state === "recording" ? "Pause" : "Resume"}
                 </button>
-              )}
-              {recorder.state === "recording" && (
-                <button onClick={pause} className="rounded-full border border-border px-5 py-3 font-medium">
-                  Pause
+                <button
+                  onClick={stop}
+                  className="flex h-12 items-center gap-2 whitespace-nowrap rounded-full bg-foreground px-5 text-sm font-medium text-background active:scale-[0.97]"
+                >
+                  <span className="h-3 w-3 rounded-sm bg-accent" /> Stop &amp; save
                 </button>
-              )}
-              {recorder.state === "paused" && (
-                <button onClick={resume} className="rounded-full border border-border px-5 py-3 font-medium">
-                  Resume
-                </button>
-              )}
-              {active && (
-                <button onClick={stop} className="whitespace-nowrap rounded-full bg-accent px-6 py-3 font-semibold text-white shadow active:scale-[0.97]">
-                  Stop &amp; save
-                </button>
-              )}
+              </div>
+            )}
+            <div className={`min-w-24 text-right text-xs text-muted ${active ? "hidden sm:block" : ""}`}>
+              {recorder.state === "idle" ? "Tap to start" : langInfo(lang).native}
             </div>
           </div>
         </div>

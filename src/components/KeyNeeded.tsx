@@ -15,7 +15,7 @@ export function KeyNeeded({ feature, audio = false }: { feature: string; audio?:
           You pay your AI provider directly, and the key stays in your Drive and this browser. A free Gemini key takes
           about a minute.
         </p>
-        <Link href="/settings" className="mt-3 inline-block rounded-full bg-accent px-4 py-2 font-semibold text-white">
+        <Link href="/settings" className="mt-3 inline-block rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background">
           Add a key
         </Link>
       </div>

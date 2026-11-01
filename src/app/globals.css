@@ -1,24 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fffaf5;
-  --foreground: #2b2321;
-  --muted: #7a6a65;
+  --background: #faf9f7;
+  --foreground: #1c1917;
+  --muted: #6f6863;
   --card: #ffffff;
-  --border: #f0e2d8;
-  --accent: #f07167;
-  --accent-soft: #fde4df;
+  --border: #ebe7e3;
+  --subtle: #f2efec;
+  --accent: #dc5a45;
+  --accent-soft: #fcefeb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #1c1716;
-    --foreground: #f5ece8;
-    --muted: #b3a29c;
-    --card: #262020;
-    --border: #3a302d;
-    --accent: #f4847b;
-    --accent-soft: #3f2826;
+    --background: #141211;
+    --foreground: #f3efec;
+    --muted: #a39c97;
+    --card: #1d1a19;
+    --border: #2e2a28;
+    --subtle: #262321;
+    --accent: #ef7a66;
+    --accent-soft: #33221e;
   }
 }
 
@@ -30,6 +32,7 @@
   --color-border: var(--border);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-subtle: var(--subtle);
 }
 
 html,
@@ -37,12 +40,55 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family:
-    ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari",
-    sans-serif;
+    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Noto Sans Devanagari", system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  letter-spacing: -0.006em;
   -webkit-tap-highlight-color: transparent;
 }
 
 /* Keep content clear of the iPhone notch and home bar when installed. */
 .safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* Room for the phone tab bar. */
+.pb-nav {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 768px) {
+  .pb-nav {
+    padding-bottom: 3rem;
+  }
+}
+
+/* Quiet scrollbars for chip rows. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Text fields show focus with their own border instead. */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-pop {
+  animation: pop-in 0.16s ease-out;
 }
