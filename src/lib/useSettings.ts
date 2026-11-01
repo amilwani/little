@@ -39,8 +39,15 @@ export function useSettings(token: string | null) {
     if (!token) return;
     loadSettings(token)
       .then((s) => {
-        setSettings(s);
-        writeLocal(s);
+        if (s) {
+          setSettings(s);
+          writeLocal(s);
+        } else {
+          // Nothing in Drive yet: keep what this browser has and copy it up.
+          const local = readLocal();
+          setSettings(local);
+          if (local !== DEFAULT_SETTINGS) saveSettings(token, local).catch(() => {});
+        }
       })
       .catch(() => {})
       .finally(() => setLoaded(true));

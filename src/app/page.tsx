@@ -2,7 +2,7 @@ import { auth, signIn } from "@/auth";
 import { Mascot } from "@/components/Mascot";
 import { NotesHome } from "@/components/NotesHome";
 
-type Feature = { title: string; body: string; icon: React.ReactNode; soon?: boolean };
+type Feature = { title: string; body: string; icon: React.ReactNode };
 
 const FEATURES: Feature[] = [
   {
@@ -19,13 +19,11 @@ const FEATURES: Feature[] = [
     title: "AI meeting notes",
     body: "Summaries and action items, written for you.",
     icon: <path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z" />,
-    soon: true,
   },
   {
     title: "Dictation",
     body: "Talk messy, get polished text to paste anywhere.",
     icon: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
-    soon: true,
   },
   {
     title: "Your Drive, your data",
@@ -76,11 +74,6 @@ export default async function Home() {
                   {f.icon}
                 </svg>
               </span>
-              {f.soon && (
-                <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
-                  Soon
-                </span>
-              )}
             </div>
             <h2 className="mt-3 text-sm font-semibold">{f.title}</h2>
             <p className="mt-0.5 text-xs leading-snug text-muted">{f.body}</p>

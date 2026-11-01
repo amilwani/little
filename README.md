@@ -6,7 +6,7 @@ home screen as a PWA.
 
 - **Sign-in:** Google, with the `drive.file` scope (Little only sees files it creates).
 - **Storage:** a `Little` folder in each user's Drive. Our server stores no notes.
-- **AI:** optional. Users bring their own Gemini, OpenAI or Claude key in Settings (AI features arrive in step 3).
+- **AI:** optional. Users bring their own Gemini, OpenAI or Claude key in Settings. Recording, notes and Drive work without a key; only AI features need one.
 
 ## What's in this version
 
@@ -20,7 +20,9 @@ home screen as a PWA.
 | Offline safety: notes saved on the device first, uploaded later | Done |
 | Settings: save audio, default language, AI keys | Done |
 | Installable PWA with Little icons | Done |
-| AI notes, dictation cleanup, AI transcripts | Step 3 |
+| AI meeting notes: summary, key points, action items, decisions | Done |
+| AI transcripts from the recording (Gemini or OpenAI key) | Done |
+| Dictate: talk, get clean text, copy or save | Done |
 
 ## How data is stored in Drive
 
@@ -32,6 +34,7 @@ Little/
     notes.md                 the note, readable in Drive
     transcript.json          transcript with timestamps
     audio.webm               the recording (if "Save audio" is on)
+    ai-notes.md              AI notes (when written)
 ```
 
 ## Setup
@@ -81,8 +84,16 @@ Every push to `main` deploys automatically.
 
 - On iPhone, a web app can stop recording if the screen locks or you switch apps. Little keeps the screen awake while
   recording, but keep the app open.
-- Live transcript uses the browser's speech recognition: best in Chrome and Android, weaker in Safari. AI transcripts
-  with the user's own key come in step 3.
+- Live transcript uses the browser's speech recognition: best in Chrome and Android, weaker in Safari. Users with a
+  Gemini or OpenAI key can re-transcribe the recording with AI, which is much better for Hindi and Hinglish.
+- AI transcripts send the whole recording in one request: up to about 50 minutes with Gemini and about 90 with OpenAI.
+
+## AI
+
+All AI calls run in the user's browser with their own key, straight to Google, OpenAI or Anthropic. Keys and
+transcripts never pass through Little's server. Models: Gemini 2.5 Flash, GPT-5 mini (with Whisper for transcripts),
+and Claude Opus 5.5. Claude can write notes and clean up dictation but can't transcribe audio, so AI transcripts need
+a Gemini or OpenAI key.
 
 ## Tech
 

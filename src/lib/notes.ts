@@ -144,3 +144,37 @@ export async function deleteNote(token: string, meta: NoteMeta) {
   const index = await removeNoteFromIndex(token, meta.id);
   await cache.setIndex(index);
 }
+
+export async function loadAiNotes(token: string, meta: NoteMeta) {
+  return meta.aiNotesFileId ? readText(token, meta.aiNotesFileId) : null;
+}
+
+/** Saves AI notes as ai-notes.md next to the note and records it in index.json. */
+export async function saveAiNotes(token: string, meta: NoteMeta, markdown: string) {
+  const aiNotesFileId = await saveFile(token, {
+    name: "ai-notes.md",
+    mimeType: "text/markdown",
+    body: markdown,
+    folderId: meta.folderId,
+    fileId: meta.aiNotesFileId,
+  });
+  const updated: NoteMeta = { ...meta, aiNotesFileId, updatedAt: new Date().toISOString() };
+  const index = await upsertNoteInIndex(token, updated);
+  await cache.setIndex(index);
+  return updated;
+}
+
+/** Replaces transcript.json, e.g. with a more accurate AI transcript. */
+export async function saveTranscript(token: string, meta: NoteMeta, transcript: Transcript) {
+  const transcriptFileId = await saveFile(token, {
+    name: "transcript.json",
+    mimeType: "application/json",
+    body: JSON.stringify(transcript, null, 2),
+    folderId: meta.folderId,
+    fileId: meta.transcriptFileId,
+  });
+  const updated: NoteMeta = { ...meta, transcriptFileId, updatedAt: new Date().toISOString() };
+  const index = await upsertNoteInIndex(token, updated);
+  await cache.setIndex(index);
+  return updated;
+}

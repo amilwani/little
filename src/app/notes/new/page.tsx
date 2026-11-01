@@ -99,7 +99,7 @@ export default function NewRecording() {
       }
       try {
         await saveNoteToDrive(token, note, { saveAudio: settings.saveAudio, onProgress: setSaving });
-        router.replace(`/notes/${note.id}`);
+        router.replace(`/notes/${note.id}?new=1`);
       } catch {
         setSaving(null);
         setSaveError("Couldn't upload to Google Drive. Your note is safe on this device and will upload automatically later.");
