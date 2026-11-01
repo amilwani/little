@@ -25,6 +25,8 @@ export type NoteMeta = {
   createdAt: string; // ISO
   updatedAt: string; // ISO
   durationSec: number;
+  /** "written" for a note typed by hand, with no recording. */
+  kind?: "written";
   language: Lang;
   folderId: string;
   notesFileId?: string;

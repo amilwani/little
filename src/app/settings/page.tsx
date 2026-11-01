@@ -61,7 +61,7 @@ export default function SettingsPage() {
 
   const row = "flex items-center justify-between gap-4 px-4 py-3.5";
   const group = "divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card";
-  const label = "mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted";
+  const label = "mb-2 px-1 text-[13px] font-medium text-muted";
 
   return (
     <>
@@ -160,7 +160,11 @@ export default function SettingsPage() {
               ["⌘ K", "Search and jump"],
               ["/", "Search"],
               ["N", "Record a meeting"],
+              ["W", "Write a note"],
               ["D", "Dictate"],
+              ["H", "Home"],
+              ["O", "All notes"],
+              ["I", "Ideas"],
               ["T", "To-dos"],
               ["M", "Meetings"],
               ["A", "Ask your notes"],

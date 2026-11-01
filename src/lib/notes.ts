@@ -92,6 +92,7 @@ export async function saveNoteToDrive(
     createdAt: note.createdAt,
     updatedAt: now,
     durationSec: note.durationSec,
+    kind: note.kind,
     language: note.language,
     folderId,
     notesFileId,

@@ -15,6 +15,7 @@ export type PendingNote = {
   title: string;
   createdAt: string;
   durationSec: number;
+  kind?: "written";
   language: Lang;
   notes: string;
   transcript: Transcript;
@@ -27,7 +28,11 @@ export type PendingNote = {
 
 export const cache = {
   getIndex: () => (store ? get<NoteIndex>("index", store) : Promise.resolve(undefined)),
-  setIndex: (index: NoteIndex) => (store ? set("index", index, store) : Promise.resolve()),
+  setIndex: async (index: NoteIndex) => {
+    if (store) await set("index", index, store);
+    // Lets the sidebar keep its project list current.
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("little:index"));
+  },
 
   savePending: (note: PendingNote) => (store ? set(`pending:${note.id}`, note, store) : Promise.resolve()),
   removePending: (id: string) => (store ? del(`pending:${id}`, store) : Promise.resolve()),

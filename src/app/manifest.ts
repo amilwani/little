@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Record, transcribe and keep notes in your own Google Drive.",
     start_url: "/",
     display: "standalone",
-    background_color: "#faf9f7",
-    theme_color: "#faf9f7",
+    background_color: "#ffffff",
+    theme_color: "#ffffff",
     orientation: "portrait",
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -19,8 +19,9 @@ export default function manifest(): MetadataRoute.Manifest {
     shortcuts: [
       { name: "Dictate", short_name: "Dictate", url: "/dictate", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "Record a meeting", short_name: "Record", url: "/notes/new", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "Write a note", short_name: "Write", url: "/notes/write", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "New idea", short_name: "Idea", url: "/ideas?new=1", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
       { name: "To-dos", short_name: "To-dos", url: "/todos", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Meetings", short_name: "Meetings", url: "/meetings", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
     ],
   };
 }

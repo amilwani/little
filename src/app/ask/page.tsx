@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { KeyNeeded } from "@/components/KeyNeeded";
 import { Markdown } from "@/components/Markdown";
@@ -43,7 +43,7 @@ type Answer = { question: string; text: string; sources: (AskSource & { id: stri
 export default function AskPage() {
   const router = useRouter();
   const { token, status } = useAccessToken();
-  const { settings } = useSettings(token);
+  const { settings, loaded: settingsLoaded } = useSettings(token);
   const [index, setIndex] = useState<NoteIndex | null>(null);
   const [project, setProject] = useState("");
   const [question, setQuestion] = useState("");
@@ -65,6 +65,9 @@ export default function AskPage() {
   }, [token]);
 
   const ai = pickTextAi(settings);
+  // A question typed on Home arrives as ?q=.
+  const autoAsk = useRef<string | null | undefined>(undefined);
+
   const projects = useMemo(() => (index?.projects ?? []).filter((p) => !p.unavailable), [index]);
 
   const ask = async (q: string) => {
@@ -120,6 +123,16 @@ export default function AskPage() {
     }
     setBusy(null);
   };
+
+  useEffect(() => {
+    if (autoAsk.current === undefined) autoAsk.current = new URLSearchParams(window.location.search).get("q");
+    const q = autoAsk.current;
+    if (!q || !token || !index || !settingsLoaded) return;
+    autoAsk.current = null;
+    window.history.replaceState(null, "", "/ask");
+    ask(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, index, settingsLoaded]);
 
   return (
     <>
@@ -184,11 +197,11 @@ export default function AskPage() {
 
         {answers.length === 0 && !busy ? (
           <div className="mt-8">
-            <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">Try asking</p>
-            <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+            <p className="mb-2 px-1 text-[13px] font-medium text-muted">Try asking</p>
+            <ul className="-mx-2 flex flex-col">
               {EXAMPLES.map((q) => (
                 <li key={q}>
-                  <button onClick={() => ask(q)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-subtle/60">
+                  <button onClick={() => ask(q)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm hover:bg-subtle">
                     <Icon name="search" size={15} className="text-muted" />
                     <span className="flex-1">{q}</span>
                     <Icon name="chevronRight" size={15} className="text-muted" />

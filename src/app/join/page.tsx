@@ -30,7 +30,7 @@ function Join() {
     setState("working");
     try {
       const { project } = await joinProject(token, folderId);
-      router.replace(`/?p=${project.id}`);
+      router.replace(`/notes?p=${project.id}`);
     } catch {
       return false;
     }

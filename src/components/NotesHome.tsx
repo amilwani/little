@@ -66,6 +66,26 @@ export function NotesHome() {
   const [dragging, setDragging] = useState<NoteMeta | null>(null);
   const [creating, setCreating] = useState(false);
   const [editingProject, setEditingProject] = useState(false);
+  // The new-project form lives in the sidebar chips on phones and above the list on laptops.
+  const [desktop, setDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const on = () => setDesktop(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // "Start a team project" from Home opens the new-project form.
+  useEffect(() => {
+    const open = () => setCreating(true);
+    if (window.location.hash === "#new-project") {
+      open();
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+    window.addEventListener("little:new-project", open);
+    return () => window.removeEventListener("little:new-project", open);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -210,36 +230,30 @@ export function NotesHome() {
 
   const setProjectFilter = (p: string | null) => {
     setEditingProject(false);
-    router.replace(p ? `/?p=${p}` : "/", { scroll: false });
+    router.replace(p ? `/notes?p=${p}` : "/notes", { scroll: false });
   };
 
-  const firstName = user?.name?.split(" ")[0];
-  const heading = currentProject?.name ?? (projectFilter === NONE ? "No project" : firstName ? `Hi ${firstName}` : "Your notes");
+  const heading = currentProject?.name ?? (projectFilter === NONE ? "No project" : "Notes");
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   const subtitle = currentProject
     ? `${counts.get(currentProject.id) ?? 0} notes${currentProject.shared ? " · Shared with your team" : ""}`
     : projectFilter === NONE
       ? "Notes that aren't in a project"
-      : today;
+      : index
+        ? `${index.notes.length} note${index.notes.length === 1 ? "" : "s"}`
+        : today;
   const meetingNow = nextMeeting && new Date(nextMeeting.start).getTime() <= Date.now();
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
       <AppHeader />
-      <div className="pb-nav mx-auto max-w-6xl px-4 pt-4 md:flex md:gap-10 md:pt-8">
+      <div className="pb-nav mx-auto max-w-3xl px-4 pt-4 md:pt-10">
         {/* Projects: a sidebar on large screens, a scrolling row on phones. Notes can be dropped on them. */}
-        <nav aria-label="Projects" className="md:w-52 md:shrink-0">
+        <nav aria-label="Projects" className="md:hidden">
           <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 md:sticky md:top-24 md:mx-0 md:flex-col md:gap-0.5 md:overflow-visible md:px-0">
             <ProjectChip label="All notes" icon="notes" count={index?.notes.length} active={!projectFilter} onClick={() => setProjectFilter(null)} />
             <div className="hidden items-center justify-between px-2.5 pb-1 pt-5 md:flex">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted">Projects</span>
-              <button
-                onClick={() => setCreating(true)}
-                aria-label="Add project"
-                className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-foreground"
-              >
-                <Icon name="plus" size={15} />
-              </button>
+              <span className="text-xs font-medium text-muted">Projects</span>
             </div>
             {projects.map((p) => (
               <ProjectChip
@@ -263,7 +277,7 @@ export function NotesHome() {
                 quiet
               />
             )}
-            {creating ? (
+            {creating && !desktop ? (
               <ProjectForm
                 onCancel={() => setCreating(false)}
                 onSave={(name, color) => {
@@ -297,7 +311,23 @@ export function NotesHome() {
           )}
         </nav>
 
-        <main className="min-w-0 flex-1 md:max-w-3xl">
+        <main className="min-w-0">
+          {creating && desktop && (
+            <div className="animate-pop mb-6 rounded-xl border border-border p-4">
+              <p className="mb-3 text-sm font-medium">New project</p>
+              <ProjectForm
+                onCancel={() => setCreating(false)}
+                onSave={(name, color) => {
+                  setCreating(false);
+                  act("Creating project", async () => {
+                    const r = await createProject(token!, name, color, user?.email ?? undefined);
+                    setProjectFilter(r.project.id);
+                    return r.index;
+                  });
+                }}
+              />
+            </div>
+          )}
           <div className="mt-5 flex items-start gap-3 md:mt-0">
             <div className="min-w-0 flex-1">
               <h1 className="flex items-center gap-2.5 text-[26px] font-semibold leading-tight tracking-tight">
@@ -384,7 +414,7 @@ export function NotesHome() {
             </div>
           )}
 
-          <div className="mt-5 flex items-center gap-2">
+          <div className={`mt-5 flex items-center gap-2 ${index && index.notes.length === 0 ? "hidden" : ""}`}>
             <label className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 focus-within:border-foreground/30">
               <Icon name="search" size={17} className="text-muted" />
               <input
@@ -427,10 +457,10 @@ export function NotesHome() {
 
           {pending.length > 0 && (
             <section className="mt-6">
-              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Waiting to upload</h2>
-              <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-dashed border-border bg-card">
+              <h2 className="mb-2 text-[13px] font-medium text-muted">Waiting to upload</h2>
+              <ul className="-mx-2 flex flex-col">
                 {pending.map((p) => (
-                  <li key={p.id} className="px-4 py-3">
+                  <li key={p.id} className="px-2 py-2.5">
                     <div className="font-medium">{p.title}</div>
                     <div className="text-xs text-muted">Saved on this device. Uploads to Drive when you&apos;re online.</div>
                   </li>
@@ -447,10 +477,52 @@ export function NotesHome() {
                 ))}
               </div>
             ) : index.notes.length === 0 && pending.length === 0 ? (
-              <div className="mt-14 flex flex-col items-center gap-3 text-center">
-                <Mascot size={96} mood="sleepy" />
-                <p className="font-medium">No notes yet</p>
-                <p className="max-w-xs text-sm text-muted">Press the record button and I&apos;ll start listening.</p>
+              <div className="mt-2">
+                <div className="flex items-center gap-3">
+                  <Mascot size={44} />
+                  <div>
+                    <p className="font-medium">Welcome to Little</p>
+                    <p className="text-sm text-muted">Here&apos;s how to get started.</p>
+                  </div>
+                </div>
+                <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+                  {[
+                    { href: "/notes/new", icon: "mic" as const, title: "Record a meeting", body: "Live transcript now, AI notes after", primary: true },
+                    { href: "/notes/write", icon: "doc" as const, title: "Write a note", body: "Type notes yourself, no recording" },
+                    { href: "/dictate", icon: "pen" as const, title: "Dictate", body: "Talk, then paste clean text anywhere" },
+                    ...(hasCalendar(scope)
+                      ? []
+                      : [{ href: "/meetings", icon: "calendar" as const, title: "Connect your calendar", body: "See meetings and record in one tap" }]),
+                    ...(Object.values(settings.apiKeys ?? {}).some(Boolean)
+                      ? []
+                      : [{ href: "/settings", icon: "sparkles" as const, title: "Turn on AI notes", body: "Add a free Gemini key in a minute" }]),
+                    { href: "#new-project", icon: "users" as const, title: "Start a team project", body: "Share notes and to-dos with your team" },
+                  ].map((a) => (
+                    <li key={a.title}>
+                      <Link
+                        href={a.href}
+                        onClick={(e) => {
+                          if (a.href === "#new-project") {
+                            e.preventDefault();
+                            setCreating(true);
+                          }
+                        }}
+                        className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 transition hover:border-foreground/30"
+                      >
+                        <span
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${a.primary ? "bg-accent text-white" : "bg-subtle"}`}
+                        >
+                          <Icon name={a.icon} size={19} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[15px] font-medium">{a.title}</span>
+                          <span className="block text-[13px] text-muted">{a.body}</span>
+                        </span>
+                        <Icon name="chevronRight" size={16} className="text-muted" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : visible.length === 0 ? (
               <div className="mt-12 flex flex-col items-center gap-3 text-center">
@@ -512,7 +584,7 @@ export function NotesHome() {
   function NoteGroup({ title, notes }: { title: string; notes: NoteMeta[] }) {
     return (
       <div className="mb-6">
-        <h2 className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</h2>
+        <h2 className="mb-2 px-1 text-[13px] font-medium text-muted">{title}</h2>
         <NoteList notes={notes} />
       </div>
     );
@@ -520,7 +592,7 @@ export function NotesHome() {
 
   function NoteList({ notes }: { notes: NoteMeta[] }) {
     return (
-      <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+      <ul className="-mx-2 flex flex-col">
         {notes.map((n) => (
           <NoteCard
             key={n.id}
@@ -681,8 +753,12 @@ function NoteCard({
         <div className="truncate text-[15px] font-medium">{note.title}</div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
           <span>{when}</span>
-          <span aria-hidden>·</span>
-          <span>{formatDuration(note.durationSec * 1000)}</span>
+          {note.kind !== "written" && (
+            <>
+              <span aria-hidden>·</span>
+              <span>{formatDuration(note.durationSec * 1000)}</span>
+            </>
+          )}
           {template && (
             <>
               <span aria-hidden>·</span>
@@ -732,7 +808,7 @@ function NoteCard({
     </div>
   );
 
-  const cls = `group block px-4 py-3 transition-colors ${selected ? "bg-accent-soft" : "hover:bg-subtle/60"} ${isDragging ? "opacity-40" : ""}`;
+  const cls = `group block rounded-lg px-2 py-2.5 transition-colors ${selected ? "bg-accent-soft" : "hover:bg-subtle"} ${isDragging ? "opacity-40" : ""}`;
 
   return (
     <li ref={setNodeRef} {...attributes} {...listeners} className="touch-manipulation select-none">

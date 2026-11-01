@@ -169,8 +169,8 @@ function Section({
       <h2 className="text-[15px] font-semibold">{title}</h2>
       {groups.map(([day, list]) => (
         <div key={day} className="mt-4">
-          <h3 className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">{dayLabel(day)}</h3>
-          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+          <h3 className="mb-2 px-1 text-[13px] font-medium text-muted">{dayLabel(day)}</h3>
+          <ul className="-mx-2 flex flex-col">
             {list.map((e) => (
               <EventRow key={e.id} event={e} note={noteByEvent.get(e.id)} now={now} />
             ))}
@@ -187,7 +187,7 @@ function EventRow({ event: e, note, now }: { event: CalendarEvent; note?: NoteMe
   const others = e.attendees.filter((a) => !a.self);
   const time = e.allDay ? "All day" : new Date(e.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   return (
-    <li className={`flex items-center gap-3 px-4 py-3 ${live ? "bg-accent-soft/60" : ""}`}>
+    <li className={`flex items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-subtle ${live ? "bg-accent-soft/60" : ""}`}>
       <div className="w-16 shrink-0 text-xs tabular-nums text-muted">
         {live ? (
           <span className="flex items-center gap-1.5 font-medium text-accent">

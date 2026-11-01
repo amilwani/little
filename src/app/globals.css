@@ -1,26 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf9f7;
-  --foreground: #1c1917;
-  --muted: #6f6863;
+  --background: #ffffff;
+  --foreground: #37352f;
+  --muted: #787774;
   --card: #ffffff;
-  --border: #ebe7e3;
-  --subtle: #f2efec;
+  --border: #e9e9e7;
+  --subtle: #f1f1ef;
+  --sidebar: #f8f8f7;
   --accent: #dc5a45;
-  --accent-soft: #fcefeb;
+  --accent-soft: #fbecea;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #141211;
-    --foreground: #f3efec;
-    --muted: #a39c97;
-    --card: #1d1a19;
-    --border: #2e2a28;
-    --subtle: #262321;
+    --background: #191919;
+    --foreground: #e6e6e4;
+    --muted: #9b9a97;
+    --card: #202020;
+    --border: #2f2f2f;
+    --subtle: #2a2a2a;
+    --sidebar: #202020;
     --accent: #ef7a66;
-    --accent-soft: #33221e;
+    --accent-soft: #3a2420;
   }
 }
 
@@ -33,6 +35,7 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-subtle: var(--subtle);
+  --color-sidebar: var(--sidebar);
 }
 
 html,
@@ -91,4 +94,31 @@ textarea:focus-visible {
 }
 .animate-pop {
   animation: pop-in 0.16s ease-out;
+}
+
+/* Idea cards: soft paper colours, with their own dark-mode steps. */
+.idea-plain { --idea: var(--card); --idea-dot: #d6d0ca; }
+.idea-sun { --idea: #fdf3c7; --idea-dot: #e9c33b; }
+.idea-peach { --idea: #fde4d3; --idea-dot: #ef9a62; }
+.idea-rose { --idea: #fbe1e6; --idea-dot: #e57a92; }
+.idea-lilac { --idea: #ece4fb; --idea-dot: #9b7ee6; }
+.idea-sky { --idea: #deeefb; --idea-dot: #5fa3e3; }
+.idea-mint { --idea: #dcf3e7; --idea-dot: #4fb384; }
+@media (prefers-color-scheme: dark) {
+  .idea-plain { --idea-dot: #5a534f; }
+  .idea-sun { --idea: #3a3320; }
+  .idea-peach { --idea: #3b2a20; }
+  .idea-rose { --idea: #3a2328; }
+  .idea-lilac { --idea: #2c2640; }
+  .idea-sky { --idea: #1f2e3c; }
+  .idea-mint { --idea: #1f3229; }
+}
+.bg-idea { background: var(--idea); }
+.bg-idea-dot { background: var(--idea-dot); }
+
+/* Room for the desktop sidebar. */
+@media (min-width: 768px) {
+  body:has(#sidebar) {
+    padding-left: 15rem;
+  }
 }

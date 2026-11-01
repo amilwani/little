@@ -1,5 +1,6 @@
 "use client";
 
+import { NoteModeSwitch } from "@/components/NoteModeSwitch";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -162,6 +163,7 @@ function NewRecording() {
     <>
       <AppHeader back="/" title={active ? "Recording" : "New recording"} focus />
       <main className="mx-auto flex max-w-3xl flex-col gap-5 px-4 pb-44 pt-6 md:pt-10">
+        {recorder.state === "idle" && !eventId && <NoteModeSwitch mode="record" projectId={projectId || undefined} />}
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -205,7 +207,7 @@ function NewRecording() {
 
         {recorder.state === "idle" ? (
           <section className="mt-2">
-            <h2 className="mb-2.5 text-xs font-medium uppercase tracking-wide text-muted">Meeting type</h2>
+            <h2 className="mb-2.5 text-[13px] font-medium text-muted">Meeting type</h2>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
               {TEMPLATES.map((t) => {
                 const on = template === t.id;
@@ -249,11 +251,11 @@ function NewRecording() {
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <section className={`${tab === "transcript" ? "" : "hidden"} min-h-64 rounded-2xl border border-border bg-card p-4 md:block`}>
-                <h2 className="mb-3 hidden text-xs font-medium uppercase tracking-wide text-muted md:block">Live transcript</h2>
+                <h2 className="mb-3 hidden text-[13px] font-medium text-muted md:block">Live transcript</h2>
                 <TranscriptView segments={live.segments} interim={live.interim} />
               </section>
               <section className={`${tab === "notes" ? "" : "hidden"} rounded-2xl border border-border bg-card p-4 md:block`}>
-                <h2 className="mb-3 hidden text-xs font-medium uppercase tracking-wide text-muted md:block">My notes</h2>
+                <h2 className="mb-3 hidden text-[13px] font-medium text-muted md:block">My notes</h2>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}

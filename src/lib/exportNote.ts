@@ -68,7 +68,7 @@ export function markdownToText(md: string) {
 
 function header(meta: NoteMeta) {
   const when = new Date(meta.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  return `${when} · ${formatDuration(meta.durationSec * 1000)}${meta.attendees?.length ? ` · With ${meta.attendees.join(", ")}` : ""}`;
+  return `${when}${meta.kind === "written" ? "" : ` · ${formatDuration(meta.durationSec * 1000)}`}${meta.attendees?.length ? ` · With ${meta.attendees.join(", ")}` : ""}`;
 }
 
 export function noteAsText(meta: NoteMeta, aiNotes: string | null, notes: string) {

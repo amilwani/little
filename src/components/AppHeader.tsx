@@ -7,17 +7,26 @@ import { Icon, type IconName } from "./Icon";
 import { Mascot } from "./Mascot";
 import { openPalette } from "./CommandPalette";
 import { hasHistory } from "./NavHistory";
+import { Sidebar } from "./Sidebar";
+
+/** Adds the project you're looking at, so new notes land in it. */
+export function withProject(href: string) {
+  const p = new URLSearchParams(window.location.search).get("p");
+  return p && window.location.pathname === "/notes" ? `${href}?p=${encodeURIComponent(p)}` : href;
+}
 
 export const NAV: { href: string; label: string; icon: IconName; key: string }[] = [
-  { href: "/", label: "Notes", icon: "notes", key: "h" },
-  { href: "/meetings", label: "Meetings", icon: "calendar", key: "m" },
+  { href: "/", label: "Home", icon: "home", key: "h" },
+  { href: "/notes", label: "Notes", icon: "notes", key: "o" },
+  { href: "/ideas", label: "Ideas", icon: "bulb", key: "i" },
   { href: "/todos", label: "To-dos", icon: "todo", key: "t" },
+  { href: "/meetings", label: "Meetings", icon: "calendar", key: "m" },
   { href: "/ask", label: "Ask", icon: "sparkles", key: "a" },
 ];
 
 export function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/" || pathname.startsWith("/notes/") && pathname !== "/notes/new";
-  return pathname.startsWith(href);
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /** Back goes to where you came from inside Little, or to `href` on a fresh visit. */
@@ -60,73 +69,51 @@ export function AppHeader({
   actions?: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const section = NAV.find((n) => isActive(pathname, n.href));
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
-          <div className={`flex min-w-0 items-center gap-2 ${back ? "md:hidden" : ""}`}>
-            {back ? <BackButton href={back} /> : <Logo />}
-            {title && <h1 className="min-w-0 truncate text-[15px] font-semibold">{title}</h1>}
+      {!focus && <Sidebar />}
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md max-md:border-b max-md:border-border/70">
+        <div className={`mx-auto flex h-14 items-center gap-2 px-4 md:h-12 md:px-3 ${focus ? "max-w-6xl" : "md:px-4"}`}>
+          <div className="flex min-w-0 items-center gap-2">
+            {back ? <BackButton href={back} /> : <span className="md:hidden"><Logo /></span>}
+            {title ? (
+              <h1 className="min-w-0 truncate text-[15px] font-semibold md:text-sm md:font-normal md:text-foreground/80">{title}</h1>
+            ) : (
+              section && !back && (
+                <span className="hidden items-center gap-2 text-sm text-foreground/80 md:flex">
+                  <Icon name={section.icon} size={16} className="text-muted" />
+                  {section.label}
+                </span>
+              )
+            )}
           </div>
-          {back && (
-            <div className="hidden md:flex">
-              <Logo />
-            </div>
-          )}
-
-          <nav className="ml-6 hidden items-center gap-0.5 md:flex" aria-label="Main">
-            {NAV.map((n) => {
-              const on = isActive(pathname, n.href);
-              return (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  aria-current={on ? "page" : undefined}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                    on ? "bg-subtle font-medium text-foreground" : "text-muted hover:text-foreground"
-                  }`}
-                >
-                  <Icon name={n.icon} size={16} />
-                  {n.label}
-                </Link>
-              );
-            })}
-          </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-1">
             {actions}
             <button
               onClick={openPalette}
               aria-label="Search and jump (Ctrl K)"
-              className="flex h-9 items-center gap-2 rounded-lg px-2 text-muted hover:bg-subtle hover:text-foreground md:border md:border-border md:bg-card md:px-3 md:hover:bg-card"
+              className={`flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-foreground ${focus ? "" : "md:hidden"}`}
             >
-              <Icon name="search" size={17} />
-              <span className="hidden text-sm md:inline">Search</span>
-              <kbd className="hidden rounded border border-border px-1.5 text-[11px] text-muted lg:inline">⌘K</kbd>
+              <Icon name="search" size={18} />
             </button>
             <Link
               href="/settings"
               aria-label="Settings"
               aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-              className={`flex h-9 w-9 items-center justify-center rounded-lg hover:bg-subtle hover:text-foreground ${
+              className={`flex h-9 w-9 items-center justify-center rounded-lg hover:bg-subtle hover:text-foreground md:hidden ${
                 pathname.startsWith("/settings") ? "text-foreground" : "text-muted"
               }`}
             >
               <Icon name="settings" size={18} />
             </Link>
-            <div className="hidden items-center gap-1 pl-1 md:flex">
-              <Link
-                href="/dictate"
-                className="flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-foreground hover:bg-subtle"
-              >
-                <Icon name="pen" size={16} />
-                Dictate
-              </Link>
-              <RecordLink className="flex h-9 items-center gap-2 rounded-lg bg-foreground px-3.5 text-sm font-medium text-background hover:opacity-90">
+            {!focus && (
+              <RecordLink className="ml-1 hidden h-8 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:opacity-90 md:flex">
                 <span className="h-2 w-2 rounded-full bg-accent" />
                 Record
               </RecordLink>
-            </div>
+            )}
           </div>
         </div>
       </header>
@@ -145,17 +132,28 @@ function Logo() {
 }
 
 /** Starts a recording, in the project you are looking at if any. */
-export function RecordLink({ className, children }: { className: string; children: React.ReactNode }) {
+export function RecordLink({
+  className,
+  children,
+  href = "/notes/new",
+  title,
+}: {
+  title?: string;
+  className: string;
+  children: React.ReactNode;
+  href?: string;
+}) {
   const router = useRouter();
   return (
     <Link
-      href="/notes/new"
+      href={href}
+      title={title}
       className={className}
       onClick={(e) => {
         const p = new URLSearchParams(window.location.search).get("p");
-        if (p && window.location.pathname === "/") {
+        if (p && window.location.pathname === "/notes") {
           e.preventDefault();
-          router.push(`/notes/new?p=${encodeURIComponent(p)}`);
+          router.push(`${href}?p=${encodeURIComponent(p)}`);
         }
       }}
     >
@@ -164,7 +162,7 @@ export function RecordLink({ className, children }: { className: string; childre
   );
 }
 
-/** Phone tab bar: Notes, Meetings, Record, To-dos, Ask. */
+/** Phone tab bar: Home, Notes, New, Ideas, To-dos. Meetings and Ask are on Home. */
 function BottomNav() {
   const pathname = usePathname();
   const tabs = [NAV[0], NAV[1], null, NAV[2], NAV[3]];
@@ -205,7 +203,7 @@ function RecordSheetButton() {
       {open && <button aria-label="Close" className="fixed inset-0 -z-10 cursor-default bg-black/10" onClick={() => setOpen(false)} />}
       <button
         onClick={() => setOpen((o) => !o)}
-        aria-label="Record or dictate"
+        aria-label="New note"
         aria-expanded={open}
         className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-[0_6px_20px_-6px_rgba(220,90,69,0.7)] transition-transform active:scale-95"
       >
@@ -220,6 +218,15 @@ function RecordSheetButton() {
             <span>
               <span className="block text-sm font-medium">Record a meeting</span>
               <span className="block text-xs text-muted">Transcript and AI notes</span>
+            </span>
+          </RecordLink>
+          <RecordLink href="/notes/write" className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-subtle">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-subtle">
+              <Icon name="doc" size={18} />
+            </span>
+            <span>
+              <span className="block text-sm font-medium">Write a note</span>
+              <span className="block text-xs text-muted">Type it yourself, no recording</span>
             </span>
           </RecordLink>
           <Link href="/dictate" className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-subtle">
