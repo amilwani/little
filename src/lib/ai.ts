@@ -325,3 +325,21 @@ export async function translateMarkdown(cfg: AiConfig, markdown: string, toLang:
 Keep the Markdown structure exactly: headings, bullets, "- [ ]" task boxes, bold names. Keep people's names, product names and numbers as they are. Return only the translated Markdown.`;
   return stripFences(await complete(cfg, system, markdown));
 }
+
+const RIFF_SYSTEM = `You are a warm, sharp creative partner. Someone has jotted down a raw idea. Help them think it through, briefly.
+Reply in Markdown with exactly these short sections:
+### Sharper version
+One or two sentences that state the idea more clearly and boldly.
+### Ways to take it
+3 bullet points: different directions, twists or angles, each one line.
+### First step
+One concrete thing they could do in the next 30 minutes.
+### A question to sit with
+One honest question that tests the idea.
+Write in the same language and script as the idea (keep Hindi in Devanagari, Hinglish as Hinglish). Be specific to their idea, never generic. No preamble.`;
+
+/** Expands a raw idea into angles, a first step and a hard question. */
+export async function riffOnIdea(cfg: AiConfig, idea: string): Promise<string> {
+  if (!idea.trim()) throw new AiError("Write the idea first.");
+  return stripFences(await complete(cfg, RIFF_SYSTEM, idea));
+}

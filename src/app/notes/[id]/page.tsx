@@ -114,6 +114,7 @@ function NotePage() {
         }
         setMeta(found);
         setTitle(found.title);
+        if (found.kind === "written") setTab("notes");
         cache.getIndex().then((i) => setProjects(i?.projects ?? []));
         loadIndex(token)
           .then(({ index }) => setProjects(index.projects ?? []))
@@ -466,11 +467,17 @@ function NotePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "ai", label: "AI notes" },
-    { id: "notes", label: "My notes" },
-    { id: "transcript", label: "Transcript" },
-  ];
+  const written = meta?.kind === "written";
+  const tabs: { id: Tab; label: string }[] = written
+    ? [
+        { id: "notes", label: "Note" },
+        { id: "ai", label: "AI summary" },
+      ]
+    : [
+        { id: "ai", label: "AI notes" },
+        { id: "notes", label: "My notes" },
+        { id: "transcript", label: "Transcript" },
+      ];
 
   const project = meta?.projectId ? projects.find((p) => p.id === meta.projectId) : undefined;
   const template = meta ? getTemplate(meta.template) : null;
@@ -480,7 +487,7 @@ function NotePage() {
   return (
     <>
       <AppHeader
-        back={meta?.projectId ? `/?p=${meta.projectId}` : "/"}
+        back={meta?.projectId ? `/notes?p=${meta.projectId}` : "/notes"}
         title={project?.name}
         actions={
           meta && (
@@ -525,13 +532,13 @@ function NotePage() {
         ) : (
           <>
             <nav aria-label="Breadcrumb" className="mb-3 hidden items-center gap-1 text-sm text-muted md:flex">
-              <Link href="/" className="hover:text-foreground">
+              <Link href="/notes" className="hover:text-foreground">
                 Notes
               </Link>
               {project && (
                 <>
                   <Icon name="chevronRight" size={14} />
-                  <Link href={`/?p=${project.id}`} className="flex items-center gap-1.5 hover:text-foreground">
+                  <Link href={`/notes?p=${project.id}`} className="flex items-center gap-1.5 hover:text-foreground">
                     <span className="h-2 w-2 rounded-full" style={{ background: project.color }} />
                     {project.name}
                   </Link>
@@ -546,10 +553,19 @@ function NotePage() {
             />
             <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
               <span>{new Date(meta.createdAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</span>
-              <span aria-hidden>·</span>
-              <span>{formatDuration(meta.durationSec * 1000)}</span>
-              <span aria-hidden>·</span>
-              <span>{langInfo(meta.language).native}</span>
+              {written ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>Written note</span>
+                </>
+              ) : (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>{formatDuration(meta.durationSec * 1000)}</span>
+                  <span aria-hidden>·</span>
+                  <span>{langInfo(meta.language).native}</span>
+                </>
+              )}
               {meta.attendees?.length ? (
                 <>
                   <span aria-hidden>·</span>
@@ -578,7 +594,7 @@ function NotePage() {
                 </select>
                 <Icon name="chevronDown" size={13} className="pointer-events-none -ml-1 text-muted" />
               </label>
-              <label className={`flex items-center gap-1.5 ${pill}`}>
+              {!written && <label className={`flex items-center gap-1.5 ${pill}`}>
                 <Icon name="notes" size={14} className="text-muted" />
                 <select
                   aria-label="Meeting type"
@@ -593,7 +609,7 @@ function NotePage() {
                   ))}
                 </select>
                 <Icon name="chevronDown" size={13} className="pointer-events-none -ml-1 text-muted" />
-              </label>
+              </label>}
               {meta.tags?.map((t) => (
                 <button
                   key={t}
@@ -762,14 +778,16 @@ function NotePage() {
                   <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border py-10 text-center">
                     <Mascot size={64} />
                     <p className="max-w-xs text-sm text-muted">
-                      I can turn the transcript and your notes into a {template!.name.toLowerCase()} write-up with action items.
+                      {written
+                        ? "I can tidy your note into a clear summary with action items."
+                        : `I can turn the transcript and your notes into a ${template!.name.toLowerCase()} write-up with action items.`}
                     </p>
                     <button
                       onClick={onWriteNotes}
                       disabled={!!aiBusy}
                       className="flex items-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-40"
                     >
-                      <Icon name="sparkles" size={16} /> Write AI notes
+                      <Icon name="sparkles" size={16} /> {written ? "Summarize" : "Write AI notes"}
                     </button>
                   </div>
                 )}
@@ -781,8 +799,9 @@ function NotePage() {
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Write your own notes for this meeting…"
-                  className="min-h-80 w-full resize-y bg-transparent leading-relaxed outline-none placeholder:text-muted"
+                  placeholder={written ? "Start writing…" : "Write your own notes for this meeting…"}
+                  aria-label="Note"
+                  className="min-h-80 text-[17px] w-full resize-y bg-transparent leading-relaxed outline-none placeholder:text-muted"
                 />
               </section>
             )}

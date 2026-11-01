@@ -2,7 +2,8 @@ import { auth, signIn } from "@/auth";
 import { Icon, type IconName } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
 import { Suspense } from "react";
-import { NotesHome } from "@/components/NotesHome";
+import { redirect } from "next/navigation";
+import { HomeDashboard } from "@/components/HomeDashboard";
 
 const FEATURES: { title: string; body: string; icon: IconName }[] = [
   { title: "Live transcripts", body: "Words appear as you talk", icon: "mic" },
@@ -15,14 +16,19 @@ const FEATURES: { title: string; body: string; icon: IconName }[] = [
   { title: "Private", body: "Saved in your own Drive", icon: "shield" },
 ];
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await auth();
-  if (session?.user)
+  if (session?.user) {
+    // Older links to a project or a search open the notes list.
+    const { p, q } = await searchParams;
+    if (p) redirect(`/notes?p=${encodeURIComponent(p)}`);
+    if (q) redirect(`/notes?q=${encodeURIComponent(q)}`);
     return (
       <Suspense>
-        <NotesHome />
+        <HomeDashboard />
       </Suspense>
     );
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-6xl flex-col justify-center gap-6 px-5 py-6 lg:flex-row lg:items-center lg:gap-16 lg:px-10">

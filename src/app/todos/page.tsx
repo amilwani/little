@@ -62,6 +62,12 @@ function Todos() {
     } catch {
       /* ignore */
     }
+    const tabParam = params.get("tab");
+    const pParam = params.get("p");
+    if (pParam) {
+      setView("team");
+      setProject(pParam);
+    } else if (tabParam === "mine" || tabParam === "team") setView(tabParam);
     if (params.get("new")) setTimeout(() => inputRef.current?.focus(), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

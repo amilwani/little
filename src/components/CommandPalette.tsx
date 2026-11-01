@@ -20,17 +20,21 @@ type Item = { id: string; label: string; hint?: string; icon: IconName; href: st
 
 const ACTIONS: Item[] = [
   { id: "a-rec", label: "Record a meeting", icon: "mic", href: "/notes/new", group: "Actions", kbd: "N" },
+  { id: "a-write", label: "Write a note", icon: "doc", href: "/notes/write", group: "Actions", kbd: "W" },
   { id: "a-dict", label: "Dictate", icon: "pen", href: "/dictate", group: "Actions", kbd: "D" },
   { id: "a-task", label: "Add a to-do", icon: "plus", href: "/todos?new=1", group: "Actions" },
   { id: "a-ask", label: "Ask your notes", icon: "sparkles", href: "/ask", group: "Actions", kbd: "A" },
-  { id: "g-home", label: "Notes", icon: "notes", href: "/", group: "Go to", kbd: "H" },
+  { id: "a-idea", label: "Jot down an idea", icon: "bulb", href: "/ideas?new=1", group: "Actions" },
+  { id: "g-home", label: "Home", icon: "home", href: "/", group: "Go to", kbd: "H" },
+  { id: "g-notes", label: "All notes", icon: "notes", href: "/notes", group: "Go to", kbd: "O" },
+  { id: "g-ideas", label: "Ideas", icon: "bulb", href: "/ideas", group: "Go to", kbd: "I" },
   { id: "g-meet", label: "Meetings", icon: "calendar", href: "/meetings", group: "Go to", kbd: "M" },
   { id: "g-todo", label: "To-dos", icon: "todo", href: "/todos", group: "Go to", kbd: "T" },
   { id: "g-dash", label: "To-do dashboard", icon: "chart", href: "/todos?view=dashboard", group: "Go to" },
   { id: "g-set", label: "Settings", icon: "settings", href: "/settings", group: "Go to" },
 ];
 
-const SHORTCUTS: Record<string, string> = { n: "/notes/new", d: "/dictate", t: "/todos", m: "/meetings", a: "/ask", h: "/" };
+const SHORTCUTS: Record<string, string> = { n: "/notes/new", d: "/dictate", w: "/notes/write", t: "/todos", m: "/meetings", a: "/ask", h: "/", o: "/notes", i: "/ideas" };
 
 function typing(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;
@@ -117,11 +121,11 @@ export function CommandPalette() {
     const projectItems: Item[] = projects
       .filter((p) => match(p.name))
       .slice(0, 6)
-      .map((p) => ({ id: "p-" + p.id, label: p.name, hint: "Project", icon: "folder", href: `/?p=${p.id}`, color: p.color, group: "Projects" }));
+      .map((p) => ({ id: "p-" + p.id, label: p.name, hint: "Project", icon: "folder", href: `/notes?p=${p.id}`, color: p.color, group: "Projects" }));
     const actionItems = ACTIONS.filter((a) => match(a.label));
     const out = s ? [...noteItems, ...projectItems, ...actionItems] : [...actionItems.slice(0, 4), ...noteItems, ...projectItems, ...actionItems.slice(4)];
     if (s)
-      out.push({ id: "search", label: `Search inside every note for “${q.trim()}”`, icon: "search", href: `/?q=${encodeURIComponent(q.trim())}`, group: "Full-text search" });
+      out.push({ id: "search", label: `Search inside every note for “${q.trim()}”`, icon: "search", href: `/notes?q=${encodeURIComponent(q.trim())}`, group: "Full-text search" });
     return out;
   }, [q, notes, projects]);
 
@@ -178,7 +182,7 @@ export function CommandPalette() {
             lastGroup = it.group;
             return (
               <li key={it.id}>
-                {header && <div className="px-3 pb-1 pt-2.5 text-[11px] font-medium uppercase tracking-wide text-muted">{header}</div>}
+                {header && <div className="px-3 pb-1 pt-2.5 text-xs font-medium text-muted">{header}</div>}
                 <button
                   data-i={i}
                   onMouseMove={() => setActive(i)}
