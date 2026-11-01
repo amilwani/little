@@ -5,19 +5,10 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { HomeDashboard } from "@/components/HomeDashboard";
 
-const FEATURES: { title: string; body: string; icon: IconName }[] = [
-  { title: "Live transcripts", body: "Words appear as you talk", icon: "mic" },
-  { title: "English + हिंदी", body: "Plus 9 Indian languages", icon: "globe" },
-  {
-    title: "AI meeting notes",
-    body: "Summary and action items",
-    icon: "sparkles",
-  },
-  { title: "Dictation", body: "Talk messy, paste clean", icon: "pen" },
-  { title: "Team projects", body: "Share with your team", icon: "users" },
-  { title: "To-do board", body: "Action items to tasks", icon: "todo" },
-  { title: "Ideas", body: "A space to think out loud", icon: "bulb" },
-  { title: "Private", body: "Saved in your own Drive", icon: "shield" },
+const BADGES: { label: string; icon: IconName }[] = [
+  { label: "हिंदी, English + 9 more", icon: "globe" },
+  { label: "Saved in your own Google Drive", icon: "shield" },
+  { label: "Free with your own AI key", icon: "sparkles" },
 ];
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -37,47 +28,81 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   return (
     <>
       <div className="aurora aurora-morning" aria-hidden />
-      <main className="relative mx-auto flex min-h-dvh max-w-6xl flex-col justify-center gap-6 px-5 py-6 lg:flex-row lg:items-center lg:gap-16 lg:px-10">
-        <section className="flex flex-col items-center text-center lg:w-1/2 lg:items-start lg:text-left">
-          <Mascot size={64} className="lg:-ml-1 [@media(max-height:700px)]:hidden" />
-          <h1 className="mt-4 font-display text-[44px] font-normal leading-[1.02] tracking-tight sm:text-[52px] lg:text-[60px] xl:text-[66px]">
-            You talk.
-            <br />
-            <em className="text-accent">Little</em> takes the notes.
+      <main className="relative mx-auto flex min-h-dvh max-w-6xl flex-col justify-center gap-10 px-5 py-8 lg:flex-row lg:items-center lg:gap-16 lg:px-10">
+        <section className="flex flex-col items-center text-center lg:w-[52%] lg:items-start lg:text-left">
+          <div className="flex items-center gap-2">
+            <Mascot size={36} />
+            <span className="text-[17px] font-semibold tracking-tight">Little</span>
+          </div>
+          <h1 className="mt-6 font-display text-[46px] font-normal leading-[1] tracking-tight sm:text-[56px] lg:text-[64px] xl:text-[72px]">
+            Never forget what you <em className="text-accent">promised.</em>
           </h1>
-          <p className="mt-3 max-w-sm text-[16px] leading-relaxed text-muted lg:max-w-md lg:text-[17px]">
-            Meetings, walkthroughs and ideas, turned into transcripts and notes in English or Hindi. Free, and private
-            to you.
+          <p className="mt-4 max-w-md text-[16px] leading-relaxed text-foreground/70 lg:text-[17px]">
+            Little listens to your meetings and voice notes, in Hindi or English, and turns what was said into notes and
+            to-dos you actually finish.
           </p>
-          <SignInButton className="mt-6 lg:max-w-xs" />
-          <p className="mt-3 hidden max-w-sm text-xs text-muted lg:block">
-            Little can only see the files it creates, in a &ldquo;Little&rdquo; folder in your Drive. AI features use
-            your own Gemini, OpenAI or Claude key.
-          </p>
+          <SignInButton className="mt-7 lg:max-w-xs" />
+          <ul className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-[13px] text-muted lg:justify-start">
+            {BADGES.map((b) => (
+              <li key={b.label} className="flex items-center gap-1.5">
+                <Icon name={b.icon} size={14} className="text-foreground/50" />
+                {b.label}
+              </li>
+            ))}
+          </ul>
         </section>
 
-        <ul className="stagger grid w-full grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border text-left lg:w-1/2">
-          {FEATURES.map((f) => (
-            <li
-              key={f.title}
-              className="group flex items-start gap-2.5 bg-card p-3 transition hover:bg-subtle/60 sm:p-4"
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-subtle transition group-hover:scale-110 group-hover:text-accent sm:h-8 sm:w-8">
-                <Icon name={f.icon} size={16} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[13px] font-semibold leading-tight sm:text-sm">{f.title}</span>
-                <span className="mt-0.5 block text-[11.5px] leading-snug text-muted sm:text-xs">{f.body}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        <p className="mx-auto max-w-sm text-center text-[11px] text-muted lg:hidden [@media(max-height:700px)]:hidden">
-          Little only sees the files it creates in your Drive. AI features use your own Gemini, OpenAI or Claude key.
-        </p>
+        <Flow />
       </main>
     </>
+  );
+}
+
+/** Talk → Notes → Done, shown as three small cards. */
+function Flow() {
+  return (
+    <ol className="stagger relative mx-auto flex w-full max-w-md flex-col gap-3 lg:w-[44%]">
+      <FlowStep n={1} label="You talk">
+        <div className="flex items-center gap-2 text-[12px] font-medium text-accent">
+          <span className="pulse-dot h-2 w-2 rounded-full bg-accent" /> Recording · 12:04
+        </div>
+        <p className="mt-2 text-[14px] leading-relaxed">
+          <span className="font-medium">Aman:</span> Priya, launch deck Friday tak bhej dena. Aur pricing hum 15th ko
+          final karenge.
+        </p>
+      </FlowStep>
+      <FlowStep n={2} label="Little takes the notes">
+        <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Decisions</p>
+        <p className="mt-1 text-[14px]">Pricing is finalised on the 15th.</p>
+        <p className="mt-3 text-[12px] font-medium uppercase tracking-wide text-muted">Action items</p>
+        <p className="mt-1 text-[14px]">Priya sends the launch deck by Friday.</p>
+      </FlowStep>
+      <FlowStep n={3} label="It gets done">
+        <div className="flex items-center gap-3">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-white">
+            <svg viewBox="0 0 24 24" width="12" height="12" className="check-draw" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12l5 5L20 7" />
+            </svg>
+          </span>
+          <span className="flex-1 text-[14px] text-foreground/50 line-through">Send launch deck</span>
+          <span className="text-[12px] text-muted">Priya · Fri</span>
+        </div>
+      </FlowStep>
+    </ol>
+  );
+}
+
+function FlowStep({ n, label, children }: { n: number; label: string; children: React.ReactNode }) {
+  return (
+    <li className="rounded-2xl border border-border bg-card/90 p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] backdrop-blur">
+      <p className="mb-2 flex items-center gap-2 text-[12px] text-muted">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-subtle text-[11px] font-semibold text-foreground">
+          {n}
+        </span>
+        {label}
+      </p>
+      {children}
+    </li>
   );
 }
 
