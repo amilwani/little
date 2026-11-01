@@ -1,9 +1,10 @@
 "use client";
 
 import type { Project } from "@/lib/drive";
+import { localDay } from "@/lib/dates";
 import { STATUSES, type Todo, type TodoStatus } from "@/lib/todos";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDay();
 
 function countBy(todos: Todo[]) {
   const c: Record<TodoStatus, number> = { todo: 0, doing: 0, review: 0, done: 0 };
@@ -48,7 +49,7 @@ export function TodoDashboard({ todos, projects, showProjects }: { todos: Todo[]
   const urgent = open.filter((t) => t.urgent);
   const pct = total ? Math.round((c.done / total) * 100) : 0;
 
-  const weekAhead = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const weekAhead = localDay(7);
   const dueSoon = open
     .filter((t) => t.due && t.due >= today() && t.due <= weekAhead)
     .sort((a, b) => a.due!.localeCompare(b.due!));

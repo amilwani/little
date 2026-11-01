@@ -1,5 +1,6 @@
 "use client";
 
+import { localDay } from "@/lib/dates";
 import {
   DndContext,
   DragOverlay,
@@ -310,7 +311,7 @@ function Todos() {
             ))}
           </div>
         )}
-        {!showDashboard && (
+        {!showDashboard && visible.length > 0 && (
           <>
             <p className="mt-1 hidden text-xs text-muted md:block">Drag cards between columns. Click a card to edit it.</p>
             <p className="mt-1 text-xs text-muted md:hidden">Press and hold a card to drag it. Swipe sideways for more columns.</p>
@@ -394,7 +395,7 @@ function Card({
   onOpen: () => void;
 }) {
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: todo.id });
-  const overdue = todo.due && todo.status !== "done" && todo.due < new Date().toISOString().slice(0, 10);
+  const overdue = todo.due && todo.status !== "done" && todo.due < localDay();
   return (
     <button
       ref={setNodeRef}

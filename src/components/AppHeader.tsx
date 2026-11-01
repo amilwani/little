@@ -30,7 +30,7 @@ export function isActive(pathname: string, href: string) {
 }
 
 /** Back goes to where you came from inside Little, or to `href` on a fresh visit. */
-export function BackButton({ href }: { href: string }) {
+function BackButton({ href }: { href: string }) {
   const router = useRouter();
   return (
     <Link

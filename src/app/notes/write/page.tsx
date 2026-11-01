@@ -1,6 +1,7 @@
 "use client";
 
 import { NoteModeSwitch } from "@/components/NoteModeSwitch";
+import { defaultNoteTitle } from "@/lib/dates";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -10,10 +11,6 @@ import { saveNoteToDrive } from "@/lib/notes";
 import type { Project } from "@/lib/drive";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
-
-function defaultTitle() {
-  return `Note ${new Date().toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`;
-}
 
 export default function WriteNotePage() {
   return (
@@ -61,7 +58,7 @@ function WriteNote() {
     setError(null);
     const note: PendingNote = {
       id: crypto.randomUUID(),
-      title: title.trim() || body.trim().split("\n")[0].slice(0, 60) || defaultTitle(),
+      title: title.trim() || body.trim().split("\n")[0].slice(0, 60) || defaultNoteTitle(),
       createdAt: new Date().toISOString(),
       durationSec: 0,
       kind: "written",

@@ -1,5 +1,6 @@
 "use client";
 
+import { NoteIcon } from "@/components/NoteIcon";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -13,42 +14,11 @@ import { cachedIdeas, loadIdeas, type Idea } from "@/lib/ideas";
 import { isMine, loadTodos, updateTodos, type Todo } from "@/lib/todos";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
-
-const DAY = 864e5;
+import { DAY, dueLabel, localDay, relTime } from "@/lib/dates";
 
 function greeting() {
   const h = new Date().getHours();
   return h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-}
-
-function localDay(offset = 0) {
-  const d = new Date(Date.now() + offset * DAY);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-function dueLabel(due: string) {
-  const today = localDay();
-  if (due < today) {
-    const days = Math.round((new Date(`${today}T00:00`).getTime() - new Date(`${due}T00:00`).getTime()) / DAY);
-    return { text: days === 1 ? "Yesterday" : `${days} days late`, late: true };
-  }
-  if (due === today) return { text: "Today", late: false, soon: true };
-  if (due === localDay(1)) return { text: "Tomorrow", late: false, soon: true };
-  const d = new Date(`${due}T00:00`);
-  const inWeek = d.getTime() - Date.now() < 6 * DAY;
-  return {
-    text: d.toLocaleDateString(undefined, inWeek ? { weekday: "short" } : { day: "numeric", month: "short" }),
-    late: false,
-  };
-}
-
-function relTime(iso: string) {
-  const t = new Date(iso);
-  const days = Math.floor((new Date(`${localDay()}T00:00`).getTime() - new Date(t.toDateString()).getTime()) / DAY);
-  if (days <= 0) return t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (days === 1) return "Yesterday";
-  if (days < 7) return t.toLocaleDateString(undefined, { weekday: "short" });
-  return t.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 /** Sort: overdue and soonest due first, then urgent, then newest. */
@@ -231,16 +201,24 @@ export function HomeDashboard() {
   const open = myOpen.filter((t) => !justDone.has(t.id)).length;
 
   // One calm line instead of a stats grid.
-  const summary =
+  const parts =
     todos === null
       ? null
       : [
-          open ? `${open} open to-do${open === 1 ? "" : "s"}${lateCount ? ` (${lateCount} late)` : ""}` : "no open to-dos",
-          calendar && events ? `${meetingsLeft || "no"} meeting${meetingsLeft === 1 ? "" : "s"} left today` : null,
+          open ? `${open} open to-do${open === 1 ? "" : "s"}${lateCount ? ` (${lateCount} late)` : ""}` : null,
+          calendar && events && meetingsLeft ? `${meetingsLeft} meeting${meetingsLeft === 1 ? "" : "s"} left today` : null,
           stats.notes ? `${stats.notes} note${stats.notes === 1 ? "" : "s"} this week` : null,
-        ]
-          .filter(Boolean)
-          .join(", ");
+        ].filter(Boolean);
+  const summary =
+    parts === null
+      ? null
+      : parts.length
+        ? `You have ${parts.join(", ")}.`
+        : stats.done
+          ? "You're all caught up. Enjoy the quiet."
+          : notes.length
+            ? "Nothing waiting on you. A good moment to think."
+            : "A fresh page. What's on your mind today?";
 
   return (
     <>
@@ -258,7 +236,7 @@ export function HomeDashboard() {
                 </>
               ) : null}
             </h1>
-            {summary && <p className="mt-2 text-[15px] leading-relaxed text-foreground/65">You have {summary}.</p>}
+            {summary && <p className="mt-2 text-[15px] leading-relaxed text-foreground/65">{summary}</p>}
           </div>
           {todos !== null && stats.done + open > 0 && <ProgressRing done={stats.done} total={stats.done + open} />}
         </div>
@@ -443,15 +421,7 @@ function NoteRow({ note, project, preview }: { note: NoteMeta; project?: Project
   return (
     <li>
       <Link href={`/notes/${note.id}`} className="group flex items-start gap-3 rounded-lg px-2 py-2.5 transition hover:bg-subtle">
-        <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition group-hover:scale-105"
-          style={{
-            background: project ? `color-mix(in srgb, ${project.color} 14%, transparent)` : "var(--subtle)",
-            color: project?.color ?? "var(--muted)",
-          }}
-        >
-          <Icon name={note.kind === "written" ? "doc" : "mic"} size={16} strokeWidth={2} />
-        </span>
+        <NoteIcon note={note} project={project} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-medium">{note.title}</span>
           {preview && <span className="mt-0.5 block truncate text-[13px] text-muted">{preview}</span>}
@@ -645,13 +615,14 @@ function GettingStarted({ calendar, hasKey }: { calendar: boolean; hasKey: boole
   const steps: { href: string; icon: IconName; title: string; body: string; onClick?: () => void }[] = [
     { href: "/notes/new", icon: "mic", title: "Record your first meeting", body: "Live transcript now, AI notes after" },
     { href: "/notes/write", icon: "doc", title: "Or write a note", body: "Type it yourself, no recording" },
+    { href: "/ideas", icon: "bulb", title: "Jot down an idea", body: "Half-formed is fine. AI can riff on it" },
     ...(calendar ? [] : [{ href: "#", icon: "calendar" as const, title: "Connect your calendar", body: "See meetings and record in one tap", onClick: () => connectCalendar() }]),
     ...(hasKey ? [] : [{ href: "/settings", icon: "sparkles" as const, title: "Turn on AI notes", body: "Add a free Gemini key in a minute" }]),
     { href: "/notes#new-project", icon: "users", title: "Start a team project", body: "Share notes and to-dos with your team" },
   ];
   return (
     <section className="mt-8">
-      <h2 className="mb-2 text-[13px] font-medium text-muted">Get started</h2>
+      <h2 className="mb-3 border-b border-border pb-2 font-display text-[24px] leading-none">Get started</h2>
       <ul className="grid gap-2 sm:grid-cols-2">
         {steps.map((s) => (
           <li key={s.title}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { NoteModeSwitch } from "@/components/NoteModeSwitch";
+import { defaultNoteTitle } from "@/lib/dates";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -19,10 +20,6 @@ import { cache as localCache } from "@/lib/local";
 import { TEMPLATES, getTemplate, type TemplateId } from "@/lib/templates";
 import type { Project } from "@/lib/drive";
 import { guessTemplate, recallEvent } from "@/lib/calendar";
-
-function defaultTitle() {
-  return `Note ${new Date().toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`;
-}
 
 export default function NewRecordingPage() {
   return (
@@ -125,7 +122,7 @@ function NewRecording() {
     savedRef.current = true;
     const note: PendingNote = {
       id: idRef.current,
-      title: title.trim() || defaultTitle(),
+      title: title.trim() || defaultNoteTitle(),
       createdAt: createdAtRef.current,
       durationSec: Math.round(recorder.elapsedMs / 1000),
       language: lang,
