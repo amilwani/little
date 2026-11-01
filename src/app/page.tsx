@@ -52,57 +52,69 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           </ul>
         </section>
 
-        <Flow />
+        <Features />
       </main>
     </>
   );
 }
 
-/** Talk → Notes → Done, shown as three small cards. */
-function Flow() {
-  return (
-    <ol className="stagger relative mx-auto flex w-full max-w-md flex-col gap-3 lg:w-[44%]">
-      <FlowStep n={1} label="You talk">
-        <div className="flex items-center gap-2 text-[12px] font-medium text-accent">
-          <span className="pulse-dot h-2 w-2 rounded-full bg-accent" /> Recording · 12:04
-        </div>
-        <p className="mt-2 text-[14px] leading-relaxed">
-          <span className="font-medium">Aman:</span> Priya, launch deck Friday tak bhej dena. Aur pricing hum 15th ko
-          final karenge.
-        </p>
-      </FlowStep>
-      <FlowStep n={2} label="Little takes the notes">
-        <p className="text-[12px] font-medium uppercase tracking-wide text-muted">Decisions</p>
-        <p className="mt-1 text-[14px]">Pricing is finalised on the 15th.</p>
-        <p className="mt-3 text-[12px] font-medium uppercase tracking-wide text-muted">Action items</p>
-        <p className="mt-1 text-[14px]">Priya sends the launch deck by Friday.</p>
-      </FlowStep>
-      <FlowStep n={3} label="It gets done">
-        <div className="flex items-center gap-3">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-white">
-            <svg viewBox="0 0 24 24" width="12" height="12" className="check-draw" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M5 12l5 5L20 7" />
-            </svg>
-          </span>
-          <span className="flex-1 text-[14px] text-foreground/50 line-through">Send launch deck</span>
-          <span className="text-[12px] text-muted">Priya · Fri</span>
-        </div>
-      </FlowStep>
-    </ol>
-  );
-}
+const FEATURES: { title: string; body: string; icon: IconName; tint: string }[] = [
+  { title: "AI notes", body: "Decisions and action items, written for you", icon: "sparkles", tint: "#dc5a45" },
+  { title: "To-do board", body: "Private tasks and team boards", icon: "todo", tint: "#2a9d8f" },
+  { title: "Calendar", body: "See today's meetings, record in one tap", icon: "calendar", tint: "#4d96ff" },
+  { title: "Ask your notes", body: "\u201cWhat did I promise this week?\u201d", icon: "search", tint: "#9b5de5" },
+  { title: "Ideas", body: "A space to think out loud, AI riffs on it", icon: "bulb", tint: "#e9a23b" },
+  { title: "Dictation", body: "Talk messy, paste clean text anywhere", icon: "pen", tint: "#e76f8a" },
+];
 
-function FlowStep({ n, label, children }: { n: number; label: string; children: React.ReactNode }) {
+/** A small bento of what Little does: one live example, then the rest. */
+function Features() {
   return (
-    <li className="rounded-2xl border border-border bg-card/90 p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] backdrop-blur">
-      <p className="mb-2 flex items-center gap-2 text-[12px] text-muted">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-subtle text-[11px] font-semibold text-foreground">
-          {n}
-        </span>
-        {label}
-      </p>
-      {children}
-    </li>
+    <div className="stagger mx-auto grid w-full max-w-lg grid-cols-2 gap-3 lg:w-[46%]">
+      <div className="col-span-2 rounded-2xl border border-border bg-card/90 p-4 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.12)] backdrop-blur">
+        <div className="flex items-center justify-between">
+          <p className="flex items-center gap-2 text-[13px] font-semibold">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "color-mix(in srgb, #dc5a45 14%, transparent)", color: "#dc5a45" }}>
+              <Icon name="mic" size={15} />
+            </span>
+            Live transcript
+          </p>
+          <span className="flex items-center gap-1.5 text-[12px] font-medium text-accent">
+            <span className="pulse-dot h-2 w-2 rounded-full bg-accent" /> 12:04
+          </span>
+        </div>
+        <div className="mt-3 space-y-1.5 text-[13.5px] leading-relaxed">
+          <p>
+            <span className="font-medium">Aman:</span> Priya, launch deck Friday tak bhej dena.
+          </p>
+          <p>
+            <span className="font-medium">Priya:</span> हाँ, और pricing 15th को final करेंगे।
+          </p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {["English", "हिंदी", "Hinglish", "+ 9 more"].map((l) => (
+            <span key={l} className="rounded-full bg-subtle px-2.5 py-0.5 text-[12px] text-foreground/70">
+              {l}
+            </span>
+          ))}
+        </div>
+      </div>
+      {FEATURES.map((f) => (
+        <div
+          key={f.title}
+          className="group rounded-2xl border border-border bg-card/90 p-3.5 shadow-[0_8px_30px_-16px_rgba(0,0,0,0.12)] backdrop-blur transition hover:-translate-y-0.5"
+        >
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition group-hover:scale-110"
+            style={{ background: `color-mix(in srgb, ${f.tint} 14%, transparent)`, color: f.tint }}
+          >
+            <Icon name={f.icon} size={16} />
+          </span>
+          <p className="mt-2.5 text-[14px] font-semibold leading-tight">{f.title}</p>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{f.body}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 
