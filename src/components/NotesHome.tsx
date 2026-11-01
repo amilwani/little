@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "./AppHeader";
+import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
 import { ShareProject } from "./ShareProject";
 import { loadIndex, searchDrive, type NoteIndex, type NoteMeta, type Project } from "@/lib/drive";
@@ -52,7 +53,11 @@ export function NotesHome() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => params.get("q") ?? "");
+  const qParam = params.get("q");
+  useEffect(() => {
+    if (qParam !== null) setQuery(qParam);
+  }, [qParam]);
   const [driveHits, setDriveHits] = useState<Set<string> | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
 
@@ -210,21 +215,38 @@ export function NotesHome() {
 
   const firstName = user?.name?.split(" ")[0];
   const heading = currentProject?.name ?? (projectFilter === NONE ? "No project" : firstName ? `Hi ${firstName}` : "Your notes");
-  const newHref = currentProject ? `/notes/new?p=${currentProject.id}` : "/notes/new";
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const subtitle = currentProject
+    ? `${counts.get(currentProject.id) ?? 0} notes${currentProject.shared ? " · Shared with your team" : ""}`
+    : projectFilter === NONE
+      ? "Notes that aren't in a project"
+      : today;
+  const meetingNow = nextMeeting && new Date(nextMeeting.start).getTime() <= Date.now();
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
-      <AppHeader wide />
-      <div className="mx-auto max-w-5xl px-4 pb-36 pt-4 md:flex md:gap-6">
+      <AppHeader />
+      <div className="pb-nav mx-auto max-w-6xl px-4 pt-4 md:flex md:gap-10 md:pt-8">
         {/* Projects: a sidebar on large screens, a scrolling row on phones. Notes can be dropped on them. */}
-        <nav aria-label="Projects" className="md:w-56 md:shrink-0">
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 md:sticky md:top-20 md:mx-0 md:flex-col md:overflow-visible md:px-0">
-            <ProjectChip label="All notes" count={index?.notes.length} active={!projectFilter} onClick={() => setProjectFilter(null)} />
+        <nav aria-label="Projects" className="md:w-52 md:shrink-0">
+          <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 md:sticky md:top-24 md:mx-0 md:flex-col md:gap-0.5 md:overflow-visible md:px-0">
+            <ProjectChip label="All notes" icon="notes" count={index?.notes.length} active={!projectFilter} onClick={() => setProjectFilter(null)} />
+            <div className="hidden items-center justify-between px-2.5 pb-1 pt-5 md:flex">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted">Projects</span>
+              <button
+                onClick={() => setCreating(true)}
+                aria-label="Add project"
+                className="flex h-6 w-6 items-center justify-center rounded-md text-muted hover:bg-subtle hover:text-foreground"
+              >
+                <Icon name="plus" size={15} />
+              </button>
+            </div>
             {projects.map((p) => (
               <ProjectChip
                 key={p.id}
                 dropId={`project:${p.id}`}
-                label={`${p.name}${p.shared ? " 👥" : ""}${p.unavailable ? " (no access)" : ""}`}
+                label={`${p.name}${p.unavailable ? " (no access)" : ""}`}
+                shared={p.shared}
                 color={p.color}
                 count={counts.get(p.id) ?? 0}
                 active={projectFilter === p.id}
@@ -238,6 +260,7 @@ export function NotesHome() {
                 count={counts.get(NONE) ?? 0}
                 active={projectFilter === NONE}
                 onClick={() => setProjectFilter(NONE)}
+                quiet
               />
             )}
             {creating ? (
@@ -255,42 +278,51 @@ export function NotesHome() {
             ) : (
               <button
                 onClick={() => setCreating(true)}
-                className="shrink-0 whitespace-nowrap rounded-full border border-dashed border-border px-4 py-2 text-sm text-muted hover:border-accent md:rounded-xl md:text-left"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-border px-3.5 py-1.5 text-sm text-muted hover:text-foreground md:rounded-lg md:border-0 md:px-2.5 md:py-1.5"
               >
-                + New project
+                <Icon name="plus" size={14} /> New project
               </button>
             )}
             <Link
               href="/join"
-              className="flex shrink-0 items-center whitespace-nowrap rounded-full px-4 py-2 text-sm text-muted hover:bg-accent-soft md:rounded-xl"
+              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm text-muted hover:text-foreground md:rounded-lg md:px-2.5"
             >
-              Join shared project
+              <Icon name="link" size={14} /> Join shared project
             </Link>
           </div>
           {dragging && (
-            <p className="mt-1 text-xs text-muted md:mt-3">Drop on a project to move {selected.has(dragging.id) && selected.size > 1 ? `${selected.size} notes` : "it"}.</p>
+            <p className="mt-2 text-xs text-muted md:mt-3 md:px-2.5">
+              Drop on a project to move {selected.has(dragging.id) && selected.size > 1 ? `${selected.size} notes` : "it"}.
+            </p>
           )}
         </nav>
 
-        <main className="min-w-0 flex-1">
-          <div className="mt-3 flex items-center gap-2 md:mt-0">
-            {currentProject && (
-              <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: currentProject.color }} aria-hidden />
-            )}
-            <h1 className="truncate text-2xl font-bold">{heading}</h1>
+        <main className="min-w-0 flex-1 md:max-w-3xl">
+          <div className="mt-5 flex items-start gap-3 md:mt-0">
+            <div className="min-w-0 flex-1">
+              <h1 className="flex items-center gap-2.5 text-[26px] font-semibold leading-tight tracking-tight">
+                {currentProject && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: currentProject.color }} aria-hidden />}
+                <span className="truncate">{heading}</span>
+              </h1>
+              <p className="mt-0.5 text-sm text-muted">{subtitle}</p>
+            </div>
             {currentProject && (
               <button
                 onClick={() => setEditingProject((v) => !v)}
-                className="rounded-full px-2 py-1 text-sm text-muted hover:bg-accent-soft"
+                className={`mt-1 flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm ${
+                  editingProject ? "border-foreground" : "border-border bg-card hover:border-foreground/30"
+                }`}
                 aria-label="Share and edit project"
+                aria-expanded={editingProject}
               >
-                {currentProject.role === "member" ? "👥 Team" : "👥 Share"}
+                <Icon name="users" size={15} />
+                {currentProject.role === "member" ? "Team" : "Share"}
               </button>
             )}
           </div>
 
           {currentProject && editingProject && (
-            <div className="mt-3 rounded-2xl border border-border bg-card p-3">
+            <div className="animate-pop mt-4 rounded-2xl border border-border bg-card p-4">
               <ProjectForm
                 initial={currentProject}
                 onCancel={() => setEditingProject(false)}
@@ -307,7 +339,7 @@ export function NotesHome() {
                     setProjectFilter(null);
                     act("Leaving project", () => leaveProject(token!, currentProject));
                   }}
-                  className="mt-3 text-sm text-muted underline"
+                  className="mt-4 text-sm text-muted hover:text-foreground"
                 >
                   Leave project
                 </button>
@@ -321,7 +353,7 @@ export function NotesHome() {
                     setProjectFilter(null);
                     act("Deleting project", () => deleteProject(token!, currentProject));
                   }}
-                  className="mt-3 text-sm text-muted underline"
+                  className="mt-4 text-sm text-muted hover:text-accent"
                 >
                   Delete project
                 </button>
@@ -329,50 +361,15 @@ export function NotesHome() {
             </div>
           )}
 
-          <div className="mt-4 flex gap-2">
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search notes, transcripts, action items"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-card px-4 py-2.5 outline-none focus:border-accent"
-            />
-            <Link
-              href="/ask"
-              className="flex shrink-0 items-center rounded-xl border border-border bg-card px-3 text-sm hover:border-accent"
-            >
-              ✨ Ask
-            </Link>
-            <button
-              onClick={() => {
-                setSelecting((s) => !s);
-                setSelected(new Set());
-              }}
-              className={`shrink-0 rounded-xl border px-3 text-sm ${selecting ? "border-accent bg-accent-soft" : "border-border bg-card"}`}
-            >
-              {selecting ? "Done" : "Select"}
-            </button>
-          </div>
-
-          {allTags.length > 0 && (
-            <div className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:px-0">
-              {allTags.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTagFilter((c) => (c === t ? null : t))}
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs ${tagFilter === t ? "bg-accent text-white" : "bg-accent-soft"}`}
-                >
-                  #{t}
-                </button>
-              ))}
-            </div>
-          )}
-
           {nextMeeting && !index?.notes.some((n) => n.calendarEventId === nextMeeting.id) && (
-            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-accent bg-accent-soft px-4 py-3">
+            <div className="mt-5 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5">
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${meetingNow ? "bg-accent-soft text-accent" : "bg-subtle text-muted"}`}>
+                <Icon name="calendar" size={19} />
+              </span>
               <div className="min-w-0 flex-1">
-                <div className="text-xs text-muted">
-                  {new Date(nextMeeting.start).getTime() <= Date.now() ? "Happening now" : "Up next"} ·{" "}
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  {meetingNow && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />}
+                  {meetingNow ? "Happening now" : "Up next"} ·{" "}
                   {new Date(nextMeeting.start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
                 </div>
                 <div className="truncate font-medium">{nextMeeting.title}</div>
@@ -380,22 +377,60 @@ export function NotesHome() {
               <Link
                 href={`/notes/new?event=${encodeURIComponent(nextMeeting.id)}`}
                 onClick={() => rememberEvent(nextMeeting)}
-                className="shrink-0 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white"
+                className="flex shrink-0 items-center gap-2 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background"
               >
-                ● Record
+                <span className="h-2 w-2 rounded-full bg-accent" /> Record
               </Link>
             </div>
           )}
 
-          {error && <p className="mt-3 rounded-xl bg-accent-soft px-4 py-3 text-sm">{error}</p>}
+          <div className="mt-5 flex items-center gap-2">
+            <label className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 focus-within:border-foreground/30">
+              <Icon name="search" size={17} className="text-muted" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search notes and transcripts"
+                className="h-10 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
+              />
+            </label>
+            <button
+              onClick={() => {
+                setSelecting((s) => !s);
+                setSelected(new Set());
+              }}
+              className={`h-10 shrink-0 rounded-xl border px-3.5 text-sm ${selecting ? "border-foreground bg-foreground text-background" : "border-border bg-card hover:border-foreground/30"}`}
+            >
+              {selecting ? "Done" : "Select"}
+            </button>
+          </div>
+
+          {allTags.length > 0 && (
+            <div className="no-scrollbar -mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 md:mx-0 md:flex-wrap md:px-0">
+              {allTags.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTagFilter((c) => (c === t ? null : t))}
+                  className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${
+                    tagFilter === t ? "border-foreground bg-foreground text-background" : "border-border text-muted hover:text-foreground"
+                  }`}
+                >
+                  #{t}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {error && <p className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{error}</p>}
           {busy && <p className="mt-3 text-sm text-muted">{busy}…</p>}
 
           {pending.length > 0 && (
             <section className="mt-6">
-              <h2 className="text-sm font-medium text-muted">Waiting to upload</h2>
-              <ul className="mt-2 space-y-2">
+              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Waiting to upload</h2>
+              <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-dashed border-border bg-card">
                 {pending.map((p) => (
-                  <li key={p.id} className="rounded-2xl border border-dashed border-border bg-card px-4 py-3">
+                  <li key={p.id} className="px-4 py-3">
                     <div className="font-medium">{p.title}</div>
                     <div className="text-xs text-muted">Saved on this device. Uploads to Drive when you&apos;re online.</div>
                   </li>
@@ -404,32 +439,32 @@ export function NotesHome() {
             </section>
           )}
 
-          <section className="mt-5">
+          <section className="mt-6">
             {index === null ? (
-              <p className="text-muted">Loading your notes…</p>
+              <div className="space-y-2" aria-label="Loading your notes">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-16 animate-pulse rounded-2xl bg-subtle" />
+                ))}
+              </div>
             ) : index.notes.length === 0 && pending.length === 0 ? (
-              <div className="mt-16 flex flex-col items-center gap-3 text-center">
-                <Mascot size={110} mood="sleepy" />
+              <div className="mt-14 flex flex-col items-center gap-3 text-center">
+                <Mascot size={96} mood="sleepy" />
                 <p className="font-medium">No notes yet</p>
-                <p className="max-w-xs text-sm text-muted">Tap the button below and I&apos;ll start listening.</p>
+                <p className="max-w-xs text-sm text-muted">Press the record button and I&apos;ll start listening.</p>
               </div>
             ) : visible.length === 0 ? (
               <div className="mt-12 flex flex-col items-center gap-3 text-center">
-                <Mascot size={90} mood="sleepy" />
+                <Mascot size={80} mood="sleepy" />
                 <p className="text-sm text-muted">
                   {query ? `Nothing matches "${query}".` : currentProject ? "No notes in this project yet. Drag some here, or record one." : "No notes here."}
                 </p>
               </div>
             ) : (
               <>
-                {pinned.length > 0 && (
-                  <>
-                    <h2 className="mb-2 text-sm font-medium text-muted">Pinned</h2>
-                    <NoteList notes={pinned} />
-                    {rest.length > 0 && <h2 className="mb-2 mt-5 text-sm font-medium text-muted">Notes</h2>}
-                  </>
-                )}
-                <NoteList notes={rest} />
+                {pinned.length > 0 && <NoteGroup title="Pinned" notes={pinned} />}
+                {groupByDay(rest).map(([label, list]) => (
+                  <NoteGroup key={label} title={label} notes={list} />
+                ))}
               </>
             )}
           </section>
@@ -438,7 +473,7 @@ export function NotesHome() {
 
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className="rotate-2 rounded-2xl border border-accent bg-card px-4 py-3 shadow-xl">
+          <div className="rotate-1 rounded-xl border border-border bg-card px-4 py-3 shadow-2xl">
             <div className="font-medium">{dragging.title}</div>
             {selected.has(dragging.id) && selected.size > 1 && (
               <div className="text-xs text-muted">and {selected.size - 1} more</div>
@@ -447,16 +482,16 @@ export function NotesHome() {
         )}
       </DragOverlay>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background to-transparent pt-8">
-        {selecting ? (
-          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 shadow-lg">
-            <span className="px-2 text-sm">{selected.size} selected</span>
+      {selecting && (
+        <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 md:bottom-8">
+          <div className="animate-pop flex items-center gap-2 rounded-full bg-foreground py-1.5 pl-4 pr-1.5 text-background shadow-2xl">
+            <span className="text-sm">{selected.size} selected</span>
             <select
               aria-label="Move to project"
               disabled={!selected.size}
               value=""
               onChange={(e) => move([...selected], e.target.value === NONE ? null : e.target.value)}
-              className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-full bg-background px-4 py-2 text-sm font-medium text-foreground disabled:opacity-50"
             >
               <option value="" disabled>
                 Move to…
@@ -469,29 +504,23 @@ export function NotesHome() {
               <option value={NONE}>No project</option>
             </select>
           </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <Link
-              href="/dictate"
-              className="rounded-full border border-border bg-card px-5 py-4 text-lg font-semibold shadow-lg active:scale-[0.97]"
-            >
-              Dictate
-            </Link>
-            <Link
-              href={newHref}
-              className="flex items-center gap-2 whitespace-nowrap rounded-full bg-accent px-7 py-4 text-lg font-semibold text-white shadow-lg active:scale-[0.97]"
-            >
-              <span className="inline-block h-3 w-3 rounded-full bg-white" /> Record meeting
-            </Link>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </DndContext>
   );
 
+  function NoteGroup({ title, notes }: { title: string; notes: NoteMeta[] }) {
+    return (
+      <div className="mb-6">
+        <h2 className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</h2>
+        <NoteList notes={notes} />
+      </div>
+    );
+  }
+
   function NoteList({ notes }: { notes: NoteMeta[] }) {
     return (
-      <ul className="space-y-2">
+      <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
         {notes.map((n) => (
           <NoteCard
             key={n.id}
@@ -520,30 +549,50 @@ export function NotesHome() {
 function ProjectChip({
   label,
   color,
+  icon,
   count,
   active,
   onClick,
   dropId,
+  shared,
+  quiet,
 }: {
   label: string;
   color?: string;
+  icon?: "notes";
   count?: number;
   active: boolean;
   onClick: () => void;
   dropId?: string;
+  shared?: boolean;
+  quiet?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: dropId ?? `static:${label}`, disabled: !dropId });
   return (
     <button
       ref={setNodeRef}
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 py-2 text-sm transition md:rounded-xl ${
-        isOver ? "scale-105 border-accent bg-accent-soft" : active ? "border-accent bg-accent-soft font-medium" : "border-border bg-card"
+      aria-current={active ? "page" : undefined}
+      className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition md:rounded-lg md:border-0 md:px-2.5 ${
+        isOver
+          ? "scale-[1.03] border-accent bg-accent-soft ring-2 ring-accent md:ring-2"
+          : active
+            ? "border-foreground bg-foreground text-background md:bg-subtle md:font-medium md:text-foreground"
+            : `border-border bg-card md:bg-transparent md:hover:bg-subtle ${quiet ? "text-muted" : ""}`
       }`}
     >
-      {color && <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} aria-hidden />}
+      {color ? (
+        <span className="flex w-4 justify-center">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} aria-hidden />
+        </span>
+      ) : icon ? (
+        <Icon name="notes" size={16} className="hidden md:block" />
+      ) : (
+        <span className="hidden w-4 md:block" />
+      )}
       <span className="truncate md:flex-1 md:text-left">{label}</span>
-      {count !== undefined && <span className="text-xs text-muted">{count}</span>}
+      {shared && <Icon name="users" size={13} className="opacity-60" />}
+      {count !== undefined && <span className={`text-xs tabular-nums ${active ? "opacity-70" : "text-muted"}`}>{count}</span>}
     </button>
   );
 }
@@ -565,14 +614,14 @@ function ProjectForm({
         e.preventDefault();
         if (name.trim()) onSave(name.trim(), color);
       }}
-      className="flex shrink-0 flex-col gap-2 rounded-xl border border-accent bg-card p-2"
+      className="flex shrink-0 flex-col gap-2.5 rounded-xl border border-border bg-card p-2.5 shadow-sm"
     >
       <input
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Project name"
-        className="w-48 rounded-lg bg-background px-3 py-1.5 text-sm outline-none md:w-full"
+        className="w-48 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-foreground/30 md:w-full"
       />
       <div className="flex gap-1.5">
         {PROJECT_COLORS.map((c) => (
@@ -587,7 +636,7 @@ function ProjectForm({
         ))}
       </div>
       <div className="flex gap-2">
-        <button type="submit" className="rounded-full bg-accent px-3 py-1 text-sm font-medium text-white">
+        <button type="submit" className="rounded-lg bg-foreground px-3 py-1 text-sm font-medium text-background">
           {initial ? "Save" : "Create"}
         </button>
         <button type="button" onClick={onCancel} className="px-2 text-sm text-muted">
@@ -620,81 +669,108 @@ function NoteCard({
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: note.id });
   const open = note.actions?.filter((a) => !a.done).length ?? 0;
   const template = note.template && note.template !== "general" ? getTemplate(note.template) : null;
+  const created = new Date(note.createdAt);
+  const recent = Date.now() - created.getTime() < 6 * 864e5;
+  const when = recent
+    ? created.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    : created.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 
   const body = (
-    <>
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1 font-medium">{note.title}</div>
-        {!selecting && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onPin();
-            }}
-            aria-label={note.pinned ? "Unpin" : "Pin"}
-            className={`-mr-1 -mt-0.5 rounded-full px-1.5 text-sm ${note.pinned ? "" : "opacity-30 hover:opacity-80"}`}
-          >
-            📌
-          </button>
-        )}
-      </div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-        <span>
-          {new Date(note.createdAt).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
-        </span>
-        <span>· {formatDuration(note.durationSec * 1000)}</span>
-        <span>· {langInfo(note.language).native}</span>
-        {template && (
-          <span>
-            · {template.emoji} {template.name}
-          </span>
-        )}
-        {open > 0 && <span>· ☐ {open} to do</span>}
-      </div>
-      {(showProject && project) || note.tags?.length ? (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {showProject && project && (
-            <span className="flex items-center gap-1 rounded-full bg-background px-2 py-0.5 text-[11px]">
-              <span className="h-2 w-2 rounded-full" style={{ background: project.color }} aria-hidden />
-              {project.name}
-            </span>
+    <div className="flex items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[15px] font-medium">{note.title}</div>
+        <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
+          <span>{when}</span>
+          <span aria-hidden>·</span>
+          <span>{formatDuration(note.durationSec * 1000)}</span>
+          {template && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="truncate">{template.name}</span>
+            </>
+          )}
+          {!note.language.startsWith("en") && (
+            <>
+              <span aria-hidden>·</span>
+              <span>{langInfo(note.language).native}</span>
+            </>
           )}
           {note.tags?.map((t) => (
-            <span key={t} className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px]">
+            <span key={t} className="hidden text-muted sm:inline">
               #{t}
             </span>
           ))}
         </div>
-      ) : null}
-    </>
+      </div>
+      {open > 0 && (
+        <span className="flex shrink-0 items-center gap-1 rounded-md bg-subtle px-1.5 py-0.5 text-[11px] tabular-nums text-muted" title={`${open} open action items`}>
+          <Icon name="todo" size={12} /> {open}
+        </span>
+      )}
+      {showProject && project && (
+        <span className="hidden max-w-[10rem] shrink-0 items-center gap-1.5 truncate text-xs text-muted sm:flex">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: project.color }} aria-hidden />
+          <span className="truncate">{project.name}</span>
+        </span>
+      )}
+      {showProject && project && <span className="h-2 w-2 shrink-0 rounded-full sm:hidden" style={{ background: project.color }} aria-label={project.name} />}
+      {!selecting && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onPin();
+          }}
+          aria-label={note.pinned ? "Unpin" : "Pin"}
+          className={`-mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-subtle ${
+            note.pinned ? "text-accent" : "text-muted opacity-0 group-hover:opacity-100 focus:opacity-100 max-md:hidden"
+          }`}
+        >
+          <Icon name="pin" size={15} />
+        </button>
+      )}
+    </div>
   );
 
-  const cls = `block rounded-2xl border bg-card px-4 py-3 transition ${
-    selected ? "border-accent bg-accent-soft" : "border-border hover:border-accent"
-  } ${isDragging ? "opacity-40" : ""}`;
+  const cls = `group block px-4 py-3 transition-colors ${selected ? "bg-accent-soft" : "hover:bg-subtle/60"} ${isDragging ? "opacity-40" : ""}`;
 
   return (
     <li ref={setNodeRef} {...attributes} {...listeners} className="touch-manipulation select-none">
       {selecting ? (
-        <button onClick={onSelect} className={`${cls} flex w-full items-start gap-3 text-left`}>
+        <button onClick={onSelect} className={`${cls} flex w-full items-center gap-3 text-left`}>
           <span
-            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${selected ? "border-accent bg-accent text-white" : "border-border"}`}
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${selected ? "border-accent bg-accent text-white" : "border-border"}`}
           >
-            {selected ? "✓" : ""}
+            {selected && <Icon name="check" size={13} strokeWidth={2.5} />}
           </span>
           <span className="min-w-0 flex-1">{body}</span>
         </button>
       ) : (
-        <Link
-          href={`/notes/${note.id}`}
-          onClick={(e) => blockClick() && e.preventDefault()}
-          className={cls}
-          draggable={false}
-        >
+        <Link href={`/notes/${note.id}`} onClick={(e) => blockClick() && e.preventDefault()} className={cls} draggable={false}>
           {body}
         </Link>
       )}
     </li>
   );
+}
+
+/** Today, Yesterday, This week, then by month. */
+function groupByDay(notes: NoteMeta[]): [string, NoteMeta[]][] {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const t0 = start.getTime();
+  const groups = new Map<string, NoteMeta[]>();
+  for (const n of notes) {
+    const t = new Date(n.createdAt).getTime();
+    const label =
+      t >= t0
+        ? "Today"
+        : t >= t0 - 864e5
+          ? "Yesterday"
+          : t >= t0 - 6 * 864e5
+            ? "Earlier this week"
+            : new Date(n.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    groups.set(label, [...(groups.get(label) ?? []), n]);
+  }
+  return [...groups.entries()];
 }

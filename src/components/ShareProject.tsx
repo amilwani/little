@@ -76,7 +76,7 @@ export function ShareProject({
         ) : (
           members.map((m) => (
             <li key={m.permissionId} className="flex items-center gap-2 text-sm">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold uppercase">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-subtle text-xs font-semibold uppercase">
                 {(m.name ?? m.email)[0]}
               </span>
               <span className="min-w-0 flex-1 truncate">
@@ -102,7 +102,7 @@ export function ShareProject({
             placeholder="Add Google emails, separated by commas"
             className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
           />
-          <button disabled={busy} className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          <button disabled={busy} className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50">
             {busy ? "Sharing…" : "Share"}
           </button>
         </form>
@@ -112,7 +112,7 @@ export function ShareProject({
           Copy join link
         </button>
       </div>
-      {note && <p className="mt-2 rounded-lg bg-accent-soft px-3 py-2 text-xs">{note}</p>}
+      {note && <p className="mt-2 rounded-lg bg-subtle px-3 py-2 text-xs">{note}</p>}
     </div>
   );
 }

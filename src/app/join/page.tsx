@@ -71,7 +71,7 @@ function Join() {
             <p className="text-sm text-muted">Use the Google account the invite was sent to.</p>
             <button
               onClick={() => signIn("google", { callbackUrl: window.location.href })}
-              className="rounded-full bg-accent px-6 py-3 font-semibold text-white"
+              className="rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-background"
             >
               Sign in with Google
             </button>
@@ -94,7 +94,7 @@ function Join() {
             <PickButton onClick={pick} />
           </>
         )}
-        {error && <p className="rounded-xl bg-accent-soft px-4 py-3 text-sm">{error}</p>}
+        {error && <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm">{error}</p>}
       </main>
     </>
   );
@@ -103,13 +103,13 @@ function Join() {
 function PickButton({ onClick }: { onClick: () => void }) {
   if (!pickerAvailable) {
     return (
-      <p className="rounded-xl bg-accent-soft px-4 py-3 text-sm">
+      <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
         Joining needs Google&apos;s file picker, which isn&apos;t set up on this copy of Little yet.
       </p>
     );
   }
   return (
-    <button onClick={onClick} className="rounded-full bg-accent px-6 py-3 font-semibold text-white">
+    <button onClick={onClick} className="rounded-lg bg-foreground px-5 py-2.5 text-sm font-medium text-background">
       Pick the shared folder
     </button>
   );

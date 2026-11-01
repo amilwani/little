@@ -2,6 +2,8 @@
 // numbered lists, bold and italics. Renders text only (no HTML), so model
 // output can't inject markup.
 
+import { Icon } from "./Icon";
+
 import { Fragment } from "react";
 
 function inline(text: string) {
@@ -33,7 +35,7 @@ export function Markdown({
     if (!list) return;
     const Tag = list.ordered ? "ol" : "ul";
     out.push(
-      <Tag key={out.length} className={`${list.ordered ? "list-decimal" : "list-none"} mb-3 space-y-1.5 pl-1`}>
+      <Tag key={`list-${out.length}`} className={`${list.ordered ? "list-decimal" : "list-none"} mb-3 space-y-1.5 pl-1`}>
         {list.items}
       </Tag>,
     );
@@ -50,7 +52,7 @@ export function Markdown({
     if (h) {
       flush();
       out.push(
-        <h3 key={i} className="mb-2 mt-5 text-base font-semibold first:mt-0">
+        <h3 key={i} className="mb-2 mt-7 text-[13px] font-semibold uppercase tracking-wide text-muted first:mt-0">
           {inline(h[2])}
         </h3>,
       );
@@ -64,7 +66,7 @@ export function Markdown({
           {task ? (
             <TaskBox n={++taskN} done={task[1] !== " "} onToggle={onToggleTask} />
           ) : (
-            <span aria-hidden className="mt-2.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+            <span aria-hidden className="mt-[11px] inline-block h-1 w-1 shrink-0 rounded-full bg-foreground/50" />
           )}
           <span className={`flex-1 ${task && task[1] !== " " ? "text-muted line-through" : ""}`}>
             {inline(task ? task[2] : bullet![1])}
@@ -98,13 +100,14 @@ export function Markdown({
 }
 
 function TaskBox({ n, done, onToggle }: { n: number; done: boolean; onToggle?: (n: number, done: boolean) => void }) {
-  const cls = `mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-accent text-[10px] leading-none ${
-    done ? "bg-accent text-white" : ""
+  const cls = `mt-[3px] flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors ${
+    done ? "border-foreground bg-foreground text-background" : "border-foreground/25 hover:border-foreground/60"
   }`;
-  if (!onToggle) return <span aria-hidden className={cls}>{done ? "✓" : ""}</span>;
+  const tick = done ? <Icon name="check" size={12} strokeWidth={3} /> : null;
+  if (!onToggle) return <span aria-hidden className={cls}>{tick}</span>;
   return (
     <button onClick={() => onToggle(n, !done)} aria-label={done ? "Mark as not done" : "Mark as done"} className={cls}>
-      {done ? "✓" : ""}
+      {tick}
     </button>
   );
 }

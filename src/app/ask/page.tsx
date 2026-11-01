@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { KeyNeeded } from "@/components/KeyNeeded";
 import { Markdown } from "@/components/Markdown";
+import { Icon } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
 import { AiError, askNotes, pickTextAi, PROVIDER_NAMES, type AskSource } from "@/lib/ai";
 import { loadIndex, readText, searchDrive, type NoteIndex, type NoteMeta } from "@/lib/drive";
@@ -122,40 +123,49 @@ export default function AskPage() {
 
   return (
     <>
-      <AppHeader back="/" title="Ask your notes" />
-      <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
+      <AppHeader />
+      <main className="pb-nav mx-auto max-w-2xl px-4 pt-5 md:pt-8">
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Ask your notes</h1>
+        <p className="mt-0.5 text-sm text-muted">Answers come from your meetings, with links to the ones I used.</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             ask(question);
           }}
-          className="flex flex-col gap-2"
+          className="mt-5 rounded-2xl border border-border bg-card p-1.5 shadow-sm focus-within:border-foreground/30"
         >
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 pl-2.5">
+            <Icon name="sparkles" size={18} className="text-accent" />
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ask anything about your meetings"
-              className="min-w-0 flex-1 rounded-xl border border-border bg-card px-4 py-3 outline-none focus:border-accent"
+              placeholder="What did we decide about…"
+              autoFocus
+              className="h-11 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted"
             />
-            <button disabled={!!busy || !question.trim()} className="rounded-xl bg-accent px-5 font-semibold text-white disabled:opacity-50">
-              Ask
+            <button
+              disabled={!!busy || !question.trim()}
+              aria-label="Ask"
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background transition disabled:opacity-30"
+            >
+              <Icon name="back" size={18} strokeWidth={2.25} className="rotate-180" />
             </button>
           </div>
           {projects.length > 0 && (
-            <select
-              value={project}
-              onChange={(e) => setProject(e.target.value)}
-              aria-label="Which notes"
-              className="self-start rounded-full border border-border bg-card px-3 py-1.5 text-sm"
-            >
-              <option value="">All my meetings</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  Only {p.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1 flex border-t border-border px-1.5 pt-1.5">
+              <label className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-subtle">
+                <Icon name="folder" size={13} />
+                <select value={project} onChange={(e) => setProject(e.target.value)} aria-label="Which notes" className="cursor-pointer appearance-none bg-transparent outline-none">
+                  <option value="">All my meetings</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      Only {p.name}
+                    </option>
+                  ))}
+                </select>
+                <Icon name="chevronDown" size={12} />
+              </label>
+            </div>
           )}
         </form>
 
@@ -165,46 +175,47 @@ export default function AskPage() {
           </div>
         )}
         {busy && (
-          <div className="mt-4 flex items-center gap-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm">
-            <Mascot size={36} mood="listening" />
+          <div className="mt-5 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm">
+            <Mascot size={32} mood="listening" />
             <span>{busy}…</span>
           </div>
         )}
-        {error && <p className="mt-4 rounded-xl bg-accent-soft px-4 py-3 text-sm">{error}</p>}
+        {error && <p className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{error}</p>}
 
         {answers.length === 0 && !busy ? (
-          <div className="mt-10 flex flex-col items-center gap-3 text-center">
-            <Mascot size={96} />
-            <p className="max-w-sm text-sm text-muted">
-              I&apos;ll look through your meeting notes and answer, with links to the meetings I used. Try:
-            </p>
-            <div className="flex max-w-md flex-wrap justify-center gap-2">
+          <div className="mt-8">
+            <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">Try asking</p>
+            <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
               {EXAMPLES.map((q) => (
-                <button key={q} onClick={() => ask(q)} className="rounded-full border border-border bg-card px-3 py-1.5 text-sm hover:border-accent">
-                  {q}
-                </button>
+                <li key={q}>
+                  <button onClick={() => ask(q)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-subtle/60">
+                    <Icon name="search" size={15} className="text-muted" />
+                    <span className="flex-1">{q}</span>
+                    <Icon name="chevronRight" size={15} className="text-muted" />
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         ) : (
-          <div className="mt-6 space-y-5">
+          <div className="mt-8 space-y-8">
             {answers.map((a, i) => (
-              <article key={i} className="rounded-2xl border border-border bg-card p-4">
-                <p className="mb-3 font-semibold">{a.question}</p>
+              <article key={i}>
+                <p className="mb-3 text-[17px] font-semibold">{a.question}</p>
                 <Markdown source={a.text} />
                 {a.sources.length > 0 && (
-                  <div className="mt-3 border-t border-border pt-3">
-                    <p className="mb-1.5 text-xs text-muted">From these meetings</p>
-                    <ul className="space-y-1 text-sm">
-                      {a.sources.map((s) => (
-                        <li key={s.n}>
-                          <Link href={`/notes/${s.id}`} className="underline">
-                            [{s.n}] {s.title}
-                          </Link>{" "}
-                          <span className="text-xs text-muted">· {s.date}</span>
-                        </li>
-                      ))}
-                    </ul>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {a.sources.map((s) => (
+                      <Link
+                        key={s.n}
+                        href={`/notes/${s.id}`}
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs hover:border-foreground/30"
+                      >
+                        <span className="text-muted">{s.n}</span>
+                        <span className="max-w-[14rem] truncate font-medium">{s.title}</span>
+                        <span className="text-muted">{s.date}</span>
+                      </Link>
+                    ))}
                   </div>
                 )}
               </article>
