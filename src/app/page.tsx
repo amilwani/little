@@ -1,41 +1,18 @@
 import { auth, signIn } from "@/auth";
+import { Icon, type IconName } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
 import { Suspense } from "react";
 import { NotesHome } from "@/components/NotesHome";
 
-type Feature = { title: string; body: string; icon: React.ReactNode };
-
-const FEATURES: Feature[] = [
-  {
-    title: "Live transcripts",
-    body: "Every word on screen as you talk.",
-    icon: <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3" />,
-  },
-  {
-    title: "English + हिंदी",
-    body: "Switch languages mid-meeting.",
-    icon: <path d="M4 5h9M8.5 3v2M6 5c0 4 3 7 6 8M11 5c0 4-3 7-7 9M14 21l4-9 4 9M15.5 18h5" />,
-  },
-  {
-    title: "AI meeting notes",
-    body: "Summaries and action items, written for you.",
-    icon: <path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z" />,
-  },
-  {
-    title: "Dictation",
-    body: "Talk messy, get polished text to paste anywhere.",
-    icon: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
-  },
-  {
-    title: "Your Drive, your data",
-    body: "Everything lives in your own Google Drive.",
-    icon: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4" />,
-  },
-  {
-    title: "Phone and laptop",
-    body: "Install it like an app. Works offline.",
-    icon: <path d="M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2" />,
-  },
+const FEATURES: { title: string; body: string; icon: IconName }[] = [
+  { title: "Live transcripts", body: "Words appear as you talk", icon: "mic" },
+  { title: "English + हिंदी", body: "Plus 9 Indian languages", icon: "globe" },
+  { title: "AI meeting notes", body: "Summary and action items", icon: "sparkles" },
+  { title: "Dictation", body: "Talk messy, paste clean", icon: "pen" },
+  { title: "Team projects", body: "Share with your team", icon: "users" },
+  { title: "To-do board", body: "Action items to tasks", icon: "todo" },
+  { title: "Calendar", body: "One tap to record", icon: "calendar" },
+  { title: "Private", body: "Saved in your own Drive", icon: "shield" },
 ];
 
 export default async function Home() {
@@ -48,48 +25,41 @@ export default async function Home() {
     );
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-center px-5 pb-10 pt-14 text-center md:pt-24">
-      <Mascot size={88} />
-      <h1 className="mt-6 text-[40px] font-semibold leading-[1.08] tracking-tight md:text-5xl">
-        You talk.
-        <br />
-        <span className="text-accent">Little</span> takes the notes.
-      </h1>
-      <p className="mt-4 max-w-sm text-[17px] leading-relaxed text-muted">
-        Meetings, lectures and ideas, turned into transcripts and notes in English or Hindi. Free, and private to you.
-      </p>
+    <main className="mx-auto flex min-h-dvh max-w-6xl flex-col justify-center gap-6 px-5 py-6 lg:flex-row lg:items-center lg:gap-16 lg:px-10">
+      <section className="flex flex-col items-center text-center lg:w-1/2 lg:items-start lg:text-left">
+        <Mascot size={64} className="lg:-ml-1 [@media(max-height:700px)]:hidden" />
+        <h1 className="mt-4 text-[34px] font-semibold leading-[1.08] tracking-tight sm:text-[40px] lg:text-[46px] xl:text-[50px]">
+          You talk.
+          <br />
+          <span className="text-accent">Little</span> takes the notes.
+        </h1>
+        <p className="mt-3 max-w-sm text-[16px] leading-relaxed text-muted lg:max-w-md lg:text-[17px]">
+          Meetings, walkthroughs and ideas, turned into transcripts and notes in English or Hindi. Free, and private to
+          you.
+        </p>
+        <SignInButton className="mt-6 lg:max-w-xs" />
+        <p className="mt-3 hidden max-w-sm text-xs text-muted lg:block">
+          Little can only see the files it creates, in a &ldquo;Little&rdquo; folder in your Drive. AI features use your
+          own Gemini, OpenAI or Claude key.
+        </p>
+      </section>
 
-      <SignInButton className="mt-8" />
-
-      <ul className="mt-14 grid w-full grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border text-left">
+      <ul className="grid w-full grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border text-left lg:w-1/2">
         {FEATURES.map((f) => (
-          <li key={f.title} className="bg-card p-4">
-            <div className="flex items-start justify-between gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-subtle text-foreground">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  {f.icon}
-                </svg>
-              </span>
-            </div>
-            <h2 className="mt-3 text-sm font-semibold">{f.title}</h2>
-            <p className="mt-0.5 text-xs leading-snug text-muted">{f.body}</p>
+          <li key={f.title} className="flex items-start gap-2.5 bg-card p-3 sm:p-4">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-subtle sm:h-8 sm:w-8">
+              <Icon name={f.icon} size={16} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold leading-tight sm:text-sm">{f.title}</span>
+              <span className="mt-0.5 block text-[11.5px] leading-snug text-muted sm:text-xs">{f.body}</span>
+            </span>
           </li>
         ))}
       </ul>
 
-      <p className="mt-8 max-w-sm text-xs text-muted">
-        Little can only see the files it creates, in a &ldquo;Little&rdquo; folder in your Drive. AI features use your
-        own Gemini, OpenAI or Claude key.
+      <p className="mx-auto max-w-sm text-center text-[11px] text-muted lg:hidden [@media(max-height:700px)]:hidden">
+        Little only sees the files it creates in your Drive. AI features use your own Gemini, OpenAI or Claude key.
       </p>
     </main>
   );
