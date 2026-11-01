@@ -1,5 +1,6 @@
 "use client";
 
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 import { NoteModeSwitch } from "@/components/NoteModeSwitch";
 import { defaultNoteTitle } from "@/lib/dates";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -45,13 +46,8 @@ function WriteNote() {
 
   const empty = !title.trim() && !body.trim();
 
-  // Don't lose typing if the tab is closed.
-  useEffect(() => {
-    if (empty || saving) return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [empty, saving]);
+  // Don't lose typing if the tab is closed or a link is tapped.
+  useLeaveGuard(!empty && !saving, () => confirm("Leave without saving? What you typed will be lost."));
 
   const save = async () => {
     if (empty || saving) return;

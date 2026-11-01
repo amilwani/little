@@ -191,9 +191,21 @@ export default function SettingsPage() {
               </span>
               <button
                 onClick={async () => {
+                  const waiting = (await cache.listPending()).length;
+                  if (
+                    waiting &&
+                    !confirm(
+                      `${waiting} note${waiting === 1 ? " hasn't" : "s haven't"} uploaded to Drive yet. Signing out deletes ${waiting === 1 ? "it" : "them"} from this device. Sign out anyway?`,
+                    )
+                  )
+                    return;
+                  // Clear everything Little keeps on this device, so the next person can't see it.
                   await cache.clear();
                   try {
-                    localStorage.removeItem("little:settings");
+                    for (const store of [localStorage, sessionStorage])
+                      Object.keys(store)
+                        .filter((k) => k.startsWith("little"))
+                        .forEach((k) => store.removeItem(k));
                   } catch {}
                   signOut({ redirectTo: "/" });
                 }}

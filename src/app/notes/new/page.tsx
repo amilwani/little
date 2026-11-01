@@ -1,5 +1,6 @@
 "use client";
 
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 import { NoteModeSwitch } from "@/components/NoteModeSwitch";
 import { defaultNoteTitle } from "@/lib/dates";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -81,13 +82,11 @@ function NewRecording() {
     setTemplate(id);
   };
 
-  // Warn before closing the tab mid-recording.
-  useEffect(() => {
-    if (recorder.state !== "recording" && recorder.state !== "paused") return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [recorder.state]);
+  // Mid-recording, a tapped link offers to stop and save first instead of dropping the audio.
+  useLeaveGuard(recorder.state === "recording" || recorder.state === "paused", () => {
+    if (confirm("Stop and save this recording before leaving?")) stopRef.current();
+    return false;
+  });
 
   const start = async () => {
     idRef.current = crypto.randomUUID();
@@ -110,6 +109,8 @@ function NewRecording() {
     live.stop();
     recorder.stop();
   };
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
 
   const changeLang = (l: Lang) => {
     setLang(l);

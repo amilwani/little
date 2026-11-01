@@ -1,5 +1,6 @@
 "use client";
 
+import { OfflinePill } from "@/components/OfflinePill";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -76,6 +77,7 @@ export function AppHeader({
   return (
     <>
       {!focus && <Sidebar />}
+      <OfflinePill />
       <header className={`sticky top-0 z-20 bg-background/80 backdrop-blur-xl ${hideRecord ? "md:bg-transparent md:backdrop-blur-none" : ""} max-md:border-b max-md:border-border/70`}>
         <div className={`mx-auto flex h-14 items-center gap-2 px-4 md:h-12 md:px-3 ${focus ? "max-w-6xl" : "md:px-4"}`}>
           <div className="flex min-w-0 items-center gap-2">

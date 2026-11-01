@@ -150,7 +150,7 @@ export default function Dictate() {
         {phase === "idle" && (
           <div className="mt-12 flex flex-col items-center gap-3 text-center">
             <Mascot size={96} />
-            <p className="text-xl font-semibold tracking-tight">Talk, and I&apos;ll write it up</p>
+            <p className="font-display text-[28px] leading-tight">Talk, and I&apos;ll write it up</p>
             <p className="max-w-xs text-sm text-muted">
               Say it however it comes out. I&apos;ll remove the ums, fix the punctuation and give you clean text to paste
               anywhere.

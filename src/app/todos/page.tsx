@@ -46,7 +46,7 @@ function Todos() {
   const [showDashboard, setShowDashboard] = useState(params.get("view") === "dashboard");
   const [todos, setTodos] = useState<Todo[] | null>(null);
   const [index, setIndex] = useState<NoteIndex | null>(null);
-  const [project, setProject] = useState<string | null>(null);
+  const [projectPick, setProject] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Todo | null>(null);
   const [dragging, setDragging] = useState<Todo | null>(null);
@@ -74,11 +74,11 @@ function Todos() {
   }, []);
   useEffect(() => {
     try {
-      localStorage.setItem(PREFS, JSON.stringify({ view, project, dashboard: showDashboard }));
+      localStorage.setItem(PREFS, JSON.stringify({ view, project: projectPick, dashboard: showDashboard }));
     } catch {
       /* ignore */
     }
-  }, [view, project, showDashboard]);
+  }, [view, projectPick, showDashboard]);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -138,6 +138,8 @@ function Todos() {
   const noteTitles = useMemo(() => new Map((index?.notes ?? []).map((n) => [n.id, n.title])), [index]);
 
   const activeProjects = projects.filter((p) => !p.unavailable);
+  // A remembered project filter can point at a project that was removed or unshared.
+  const project = projectPick && activeProjects.some((p) => p.id === projectPick) ? projectPick : null;
   // Team tasks first when there are projects; otherwise your own list.
   const tab = view ?? (activeProjects.length ? "team" : "mine");
   const visible = (todos ?? []).filter((t) =>
@@ -277,15 +279,18 @@ function Todos() {
         ) : tab === "team" && !activeProjects.length ? (
           <div className="mt-14 flex flex-col items-center gap-3 text-center">
             <Mascot size={100} mood="sleepy" />
-            <p className="font-medium">No team projects yet</p>
+            <p className="font-display text-[24px] leading-tight">No team projects yet</p>
             <p className="max-w-xs text-sm text-muted">
-              Create a project on the home screen and share it with your team. Its tasks show up here for everyone.
+              Create a project and share it with your team. Its tasks show up here for everyone.
             </p>
+            <Link href="/notes#new-project" className="mt-1 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background">
+              New project
+            </Link>
           </div>
         ) : visible.length === 0 && todos.length === 0 ? (
           <div className="mt-14 flex flex-col items-center gap-3 text-center">
             <Mascot size={100} mood="sleepy" />
-            <p className="font-medium">Nothing to do yet</p>
+            <p className="font-display text-[24px] leading-tight">Nothing to do yet</p>
             <p className="max-w-xs text-sm text-muted">
               Add one above, or press “To-do” next to an action item in a meeting’s AI notes.
             </p>

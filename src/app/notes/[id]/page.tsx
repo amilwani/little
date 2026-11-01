@@ -1,5 +1,6 @@
 "use client";
 
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -246,10 +247,12 @@ function NotePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, meta, transcript, settingsLoaded, aiNotes]);
 
-  const dirty = title !== savedNotes.title || notes !== savedNotes.notes;
+  const dirty = (title.trim() || savedNotes.title) !== savedNotes.title || notes !== savedNotes.notes;
+  const savingRef = useRef(false);
 
   const save = async () => {
-    if (!token || !meta) return;
+    if (!token || !meta || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const updated = await updateNote(token, meta, {
@@ -264,6 +267,7 @@ function NotePage() {
         "Couldn't save to Google Drive. Check your connection and try again.",
       );
     }
+    savingRef.current = false;
     setSaving(false);
   };
 
@@ -361,7 +365,7 @@ function NotePage() {
     if (!confirm("Move this note to your Google Drive trash?")) return;
     try {
       await deleteNote(token, meta);
-      router.replace("/");
+      router.replace(meta.projectId ? `/notes?p=${meta.projectId}` : "/notes");
     } catch {
       setMessage("Couldn't delete this note.");
     }
@@ -464,6 +468,17 @@ function NotePage() {
     const t = setTimeout(() => setMessage(null), 4500);
     return () => clearTimeout(t);
   }, [message, meta]);
+
+  // Autosave a moment after typing stops, and warn before leaving with unsaved text.
+  useEffect(() => {
+    if (!dirty || saving) return;
+    const t = setTimeout(() => saveRef.current(), 2500);
+    return () => clearTimeout(t);
+  }, [dirty, saving, title, notes]);
+  useLeaveGuard(dirty, () => {
+    saveRef.current();
+    return true;
+  });
 
   // Ctrl/⌘ S saves.
   const saveRef = useRef(save);
