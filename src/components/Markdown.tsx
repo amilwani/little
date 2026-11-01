@@ -13,7 +13,18 @@ function inline(text: string) {
   });
 }
 
-export function Markdown({ source }: { source: string }) {
+export function Markdown({
+  source,
+  onToggleTask,
+  taskExtra,
+}: {
+  source: string;
+  /** Called with the task's position (0-based) when its checkbox is tapped. */
+  onToggleTask?: (n: number, done: boolean) => void;
+  /** Extra controls shown after a task, such as "Add to to-dos". */
+  taskExtra?: (text: string, n: number) => React.ReactNode;
+}) {
+  let taskN = -1;
   const lines = source.replace(/\r/g, "").split("\n");
   const out: React.ReactNode[] = [];
   let list: { ordered: boolean; items: React.ReactNode[] } | null = null;
@@ -51,11 +62,14 @@ export function Markdown({ source }: { source: string }) {
       list.items.push(
         <li key={i} className="flex gap-2 leading-relaxed">
           {task ? (
-            <span aria-hidden className="mt-1 inline-block h-4 w-4 shrink-0 rounded border border-accent" />
+            <TaskBox n={++taskN} done={task[1] !== " "} onToggle={onToggleTask} />
           ) : (
             <span aria-hidden className="mt-2.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
           )}
-          <span>{inline(task ? task[2] : bullet![1])}</span>
+          <span className={`flex-1 ${task && task[1] !== " " ? "text-muted line-through" : ""}`}>
+            {inline(task ? task[2] : bullet![1])}
+          </span>
+          {task && taskExtra?.(task[2], taskN)}
         </li>,
       );
     } else if (num) {
@@ -81,4 +95,16 @@ export function Markdown({ source }: { source: string }) {
   });
   flush();
   return <div>{out}</div>;
+}
+
+function TaskBox({ n, done, onToggle }: { n: number; done: boolean; onToggle?: (n: number, done: boolean) => void }) {
+  const cls = `mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-accent text-[10px] leading-none ${
+    done ? "bg-accent text-white" : ""
+  }`;
+  if (!onToggle) return <span aria-hidden className={cls}>{done ? "✓" : ""}</span>;
+  return (
+    <button onClick={() => onToggle(n, !done)} aria-label={done ? "Mark as not done" : "Mark as done"} className={cls}>
+      {done ? "✓" : ""}
+    </button>
+  );
 }

@@ -12,6 +12,8 @@
 //
 // We use the `drive.file` scope, so Little can only see files it created.
 
+import type { Lang } from "./languages";
+
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -23,17 +25,48 @@ export type NoteMeta = {
   createdAt: string; // ISO
   updatedAt: string; // ISO
   durationSec: number;
-  language: "en-IN" | "hi-IN";
+  language: Lang;
   folderId: string;
   notesFileId?: string;
   transcriptFileId?: string;
   audioFileId?: string;
   aiNotesFileId?: string;
+  projectId?: string;
+  tags?: string[];
+  pinned?: boolean;
+  template?: string;
+  /** The Google Calendar event this note was recorded for. */
+  calendarEventId?: string;
+  /** Who was invited, as names or emails, from the calendar event. */
+  attendees?: string[];
+  /** Task list items from the AI notes, kept here so the Actions page is fast. */
+  actions?: ActionItem[];
+};
+
+export type ActionItem = { text: string; done: boolean };
+
+export type Project = {
+  id: string;
+  name: string;
+  color: string;
+  /** The project's folder in Drive (Little/<name>/), holding its notes' folders. */
+  folderId: string;
+  createdAt: string;
+  /** Email of the person whose Drive holds the project. */
+  owner?: string;
+  /** True once the project has been shared with anyone. */
+  shared?: boolean;
+  /** "member" when someone else shared this project with you. */
+  role?: "owner" | "member";
+  /** Set when the project can't be read (unshared, deleted or offline). */
+  unavailable?: boolean;
 };
 
 export type TranscriptSegment = {
   text: string;
   startSec: number;
+  /** Who said it, when an AI transcript could tell. */
+  speaker?: string;
 };
 
 export type Transcript = {
@@ -42,7 +75,7 @@ export type Transcript = {
   segments: TranscriptSegment[];
 };
 
-export type NoteIndex = { version: 1; notes: NoteMeta[] };
+export type NoteIndex = { version: 1; notes: NoteMeta[]; projects?: Project[] };
 
 export class DriveError extends Error {
   constructor(
@@ -201,40 +234,194 @@ export async function trashFile(token: string, fileId: string) {
   });
 }
 
-// ---- index.json: the list of all notes -------------------------------------
+// ---- The notes list -----------------------------------------------------------
+//
+// Notes that aren't in a project are listed in Little/index.json, which also
+// lists the user's projects. Each project's notes are listed in
+// <project folder>/project.json, so a project shared with teammates carries its
+// own list. loadIndex() combines them into one view; updateIndex() writes back
+// only the files whose part of the view changed.
 
-export async function loadIndex(token: string): Promise<{ index: NoteIndex; fileId: string | null }> {
-  const root = await getRootFolder(token);
-  const fileId = await findFileInFolder(token, root, "index.json");
-  if (!fileId) return { index: { version: 1, notes: [] }, fileId: null };
-  return { index: await readJson<NoteIndex>(token, fileId), fileId };
+type ProjectFile = {
+  version: 1;
+  project: { id: string; name: string; color: string; createdAt: string; owner?: string };
+  notes: NoteMeta[];
+};
+
+type Loaded = {
+  index: NoteIndex;
+  personal: { fileId: string | null; raw: string };
+  projectFiles: Map<string, { fileId: string | null; raw: string | null }>;
+};
+
+const PROJECT_FILE = "project.json";
+
+function personalJson(index: NoteIndex) {
+  const known = new Set((index.projects ?? []).filter((p) => !p.unavailable).map((p) => p.id));
+  return JSON.stringify(
+    {
+      version: 1,
+      notes: index.notes.filter((n) => !n.projectId || !known.has(n.projectId)),
+      projects: (index.projects ?? []).map(({ unavailable, ...ref }) => (void unavailable, ref)),
+    },
+    null,
+    2,
+  );
 }
 
-export async function saveIndex(token: string, index: NoteIndex, fileId: string | null) {
+function projectJson(index: NoteIndex, p: Project) {
+  const file: ProjectFile = {
+    version: 1,
+    project: { id: p.id, name: p.name, color: p.color, createdAt: p.createdAt, owner: p.owner },
+    notes: index.notes.filter((n) => n.projectId === p.id),
+  };
+  return JSON.stringify(file, null, 2);
+}
+
+async function loadAll(token: string): Promise<Loaded> {
   const root = await getRootFolder(token);
-  return saveFile(token, {
-    name: "index.json",
-    mimeType: "application/json",
-    body: JSON.stringify(index, null, 2),
-    folderId: root,
-    fileId: fileId ?? undefined,
+  const fileId = await findFileInFolder(token, root, "index.json");
+  const personalRaw = fileId ? await readText(token, fileId) : "";
+  const personal: NoteIndex = personalRaw ? JSON.parse(personalRaw) : { version: 1, notes: [] };
+  const projects = personal.projects ?? [];
+  const projectFiles: Loaded["projectFiles"] = new Map();
+  let notes = [...personal.notes];
+
+  await Promise.all(
+    projects.map(async (p, i) => {
+      try {
+        const id = await findFileInFolder(token, p.folderId, PROJECT_FILE);
+        if (!id) {
+          // A project from before project.json existed: its notes are still in index.json.
+          projectFiles.set(p.id, { fileId: null, raw: null });
+          return;
+        }
+        const raw = await readText(token, id);
+        const file = JSON.parse(raw) as ProjectFile;
+        projectFiles.set(p.id, { fileId: id, raw });
+        // project.json is the source of truth for a project's name and colour.
+        projects[i] = { ...p, ...file.project, folderId: p.folderId, shared: p.shared, role: p.role };
+        notes = notes.filter((n) => n.projectId !== p.id).concat(file.notes.map((n) => ({ ...n, projectId: p.id })));
+      } catch {
+        // Unshared, deleted or offline: show it as unavailable and never overwrite it.
+        projects[i] = { ...p, unavailable: true };
+      }
+    }),
+  );
+
+  notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const index: NoteIndex = { version: 1, notes, projects };
+  return { index, personal: { fileId, raw: personalRaw }, projectFiles };
+}
+
+export async function loadIndex(token: string): Promise<{ index: NoteIndex }> {
+  return { index: (await loadAll(token)).index };
+}
+
+async function saveAll(token: string, before: Loaded, index: NoteIndex) {
+  const root = await getRootFolder(token);
+  const writes: Promise<unknown>[] = [];
+  for (const p of index.projects ?? []) {
+    if (p.unavailable) continue;
+    const raw = projectJson(index, p);
+    const prev = before.projectFiles.get(p.id);
+    if (prev && prev.raw === raw) continue;
+    writes.push(
+      saveFile(token, {
+        name: PROJECT_FILE,
+        mimeType: "application/json",
+        body: raw,
+        folderId: p.folderId,
+        fileId: prev?.fileId ?? undefined,
+      }),
+    );
+  }
+  // Write project files first, so a note is never missing from both lists.
+  await Promise.all(writes);
+  const raw = personalJson(index);
+  if (raw !== before.personal.raw) {
+    await saveFile(token, {
+      name: "index.json",
+      mimeType: "application/json",
+      body: raw,
+      folderId: root,
+      fileId: before.personal.fileId ?? undefined,
+    });
+  }
+}
+
+/** Adds or replaces one note. */
+export async function upsertNoteInIndex(token: string, meta: NoteMeta) {
+  return updateIndex(token, (index) => {
+    const others = index.notes.filter((n) => n.id !== meta.id);
+    index.notes = [meta, ...others].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   });
 }
 
-/** Adds or replaces one note in index.json (read-modify-write). */
-export async function upsertNoteInIndex(token: string, meta: NoteMeta) {
-  const { index, fileId } = await loadIndex(token);
-  const others = index.notes.filter((n) => n.id !== meta.id);
-  index.notes = [meta, ...others].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  await saveIndex(token, index, fileId);
-  return index;
+/** Changes some fields of one note, keeping fields changed elsewhere. */
+export async function patchNoteInIndex(token: string, id: string, patch: Partial<NoteMeta>) {
+  let updated: NoteMeta | undefined;
+  const index = await updateIndex(token, (idx) => {
+    idx.notes = idx.notes.map((n) => (n.id === id ? (updated = { ...n, ...patch }) : n));
+  });
+  return { index, note: updated };
+}
+
+let indexQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Read-modify-write of the notes list. Changes from this tab run one at a
+ * time, so quick edits (a tag, then a pin) never overwrite each other.
+ */
+export function updateIndex(token: string, change: (index: NoteIndex) => void): Promise<NoteIndex> {
+  const run = indexQueue.then(async () => {
+    const before = await loadAll(token);
+    const index: NoteIndex = structuredClone(before.index);
+    index.projects ??= [];
+    change(index);
+    await saveAll(token, before, index);
+    return index;
+  });
+  indexQueue = run.catch(() => {});
+  return run;
+}
+
+/** Moves a file or folder from one Drive folder to another. */
+export async function moveFile(token: string, fileId: string, toFolderId: string) {
+  const current = await call<{ parents?: string[] }>(token, `${API}/files/${fileId}?fields=parents`);
+  const params = new URLSearchParams({ addParents: toFolderId, fields: "id" });
+  const remove = (current.parents ?? []).filter((p) => p !== toFolderId).join(",");
+  if (remove) params.set("removeParents", remove);
+  await call(token, `${API}/files/${fileId}?${params}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+}
+
+export async function renameFile(token: string, fileId: string, name: string) {
+  await call(token, `${API}/files/${fileId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/**
+ * Full-text search across Little's files in Drive (notes, transcripts, AI
+ * notes). Returns the ids of the folders that hold matching files.
+ */
+export async function searchDrive(token: string, text: string): Promise<Set<string>> {
+  const q = `fullText contains '${escapeQuery(text)}' and trashed = false and mimeType != '${FOLDER_MIME}'`;
+  const params = new URLSearchParams({ q, fields: "files(parents)", spaces: "drive", pageSize: "200" });
+  const data = await call<{ files: { parents?: string[] }[] }>(token, `${API}/files?${params}`);
+  return new Set(data.files.flatMap((f) => f.parents ?? []));
 }
 
 export async function removeNoteFromIndex(token: string, noteId: string) {
-  const { index, fileId } = await loadIndex(token);
-  index.notes = index.notes.filter((n) => n.id !== noteId);
-  await saveIndex(token, index, fileId);
-  return index;
+  return updateIndex(token, (index) => {
+    index.notes = index.notes.filter((n) => n.id !== noteId);
+  });
 }
 
 // ---- settings.json ----------------------------------------------------------
@@ -244,7 +431,7 @@ export type AiProvider = "gemini" | "openai" | "anthropic";
 export type Settings = {
   version: 1;
   saveAudio: boolean;
-  defaultLanguage: "en-IN" | "hi-IN";
+  defaultLanguage: Lang;
   aiProvider: AiProvider | null;
   apiKeys: Partial<Record<AiProvider, string>>;
 };

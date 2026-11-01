@@ -6,6 +6,7 @@
 
 import { createStore, del, get, keys, set } from "idb-keyval";
 import type { NoteIndex, Transcript } from "./drive";
+import type { Lang } from "./languages";
 
 const store = typeof indexedDB !== "undefined" ? createStore("little", "kv") : undefined;
 
@@ -14,10 +15,14 @@ export type PendingNote = {
   title: string;
   createdAt: string;
   durationSec: number;
-  language: "en-IN" | "hi-IN";
+  language: Lang;
   notes: string;
   transcript: Transcript;
   audio: Blob | null;
+  projectId?: string;
+  template?: string;
+  calendarEventId?: string;
+  attendees?: string[];
 };
 
 export const cache = {
@@ -32,6 +37,12 @@ export const cache = {
     const notes = await Promise.all(all.map((k) => get<PendingNote>(k, store)));
     return notes.filter((n): n is PendingNote => !!n);
   },
+
+  /** Text of a note (AI notes + own notes), for Ask. Keyed by note id and its last update. */
+  getText: (id: string) =>
+    store ? get<{ updatedAt: string; text: string }>(`text:${id}`, store) : Promise.resolve(undefined),
+  setText: (id: string, updatedAt: string, text: string) =>
+    store ? set(`text:${id}`, { updatedAt, text }, store) : Promise.resolve(),
 
   clear: async () => {
     if (!store) return;
