@@ -8,19 +8,25 @@ import { Markdown } from "@/components/Markdown";
 import { Mascot } from "@/components/Mascot";
 import { TranscriptView } from "@/components/TranscriptView";
 import { AiError, generateNotes, pickTextAi, pickTranscriber, PROVIDER_NAMES, transcribeAudio } from "@/lib/ai";
-import { loadIndex, type NoteMeta, type Transcript } from "@/lib/drive";
+import { loadIndex, type NoteMeta, type Project, type Transcript } from "@/lib/drive";
 import { cache } from "@/lib/local";
 import {
   deleteNote,
   loadAiNotes,
   loadAudio,
   loadNoteBody,
+  moveNotes,
+  patchNote,
   saveAiNotes,
+  toggleAction,
   saveTranscript,
+  setTaskDone,
   transcriptToText,
   updateNote,
 } from "@/lib/notes";
 import { formatDuration } from "@/lib/recorder";
+import { getTemplate, TEMPLATES } from "@/lib/templates";
+import { addActionToTodos, loadTodos, parseAction, todoTitlesForNote } from "@/lib/todos";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
 
@@ -56,6 +62,9 @@ function NotePage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [showKeyNeeded, setShowKeyNeeded] = useState<null | "notes" | "transcript">(null);
   const autoRan = useRef(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [onBoard, setOnBoard] = useState<Set<string>>(new Set());
+  const [tagDraft, setTagDraft] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -73,6 +82,13 @@ function NotePage() {
         }
         setMeta(found);
         setTitle(found.title);
+        cache.getIndex().then((i) => setProjects(i?.projects ?? []));
+        loadIndex(token)
+          .then(({ index }) => setProjects(index.projects ?? []))
+          .catch(() => {});
+        loadTodos(token)
+          .then((d) => setOnBoard(todoTitlesForNote(d.todos, found.id)))
+          .catch(() => {});
         const [body, ai] = await Promise.all([loadNoteBody(token, found), loadAiNotes(token, found)]);
         setNotes(body.notes);
         setSavedNotes({ title: found.title, notes: body.notes });
@@ -120,6 +136,7 @@ function NotePage() {
         language: current.language,
         transcript: t,
         notes: userNotes,
+        template: current.template,
       });
       setAiNotes(md);
       setTab("ai");
@@ -221,6 +238,68 @@ function NotePage() {
     });
   };
 
+  /** Saves pin, tags or template right away, keeping the page in step. */
+  const patch = async (p: Partial<Pick<NoteMeta, "pinned" | "tags" | "template">>) => {
+    if (!token || !meta) return;
+    setMeta({ ...meta, ...p });
+    try {
+      const r = await patchNote(token, meta.id, p);
+      if (r.note) setMeta(r.note);
+    } catch {
+      setMessage("Couldn't save to Google Drive. Check your connection and try again.");
+    }
+  };
+
+  const changeProject = async (projectId: string) => {
+    if (!token || !meta) return;
+    setMeta({ ...meta, projectId: projectId || undefined });
+    try {
+      const index = await moveNotes(token, [meta.id], projectId || null);
+      const fresh = index.notes.find((n) => n.id === meta.id);
+      if (fresh) setMeta(fresh);
+    } catch {
+      setMessage("Couldn't move this note. Check your connection and try again.");
+    }
+  };
+
+  const addTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    const tag = tagDraft.trim().replace(/^#/, "").replace(/\s+/g, "-").toLowerCase();
+    setTagDraft("");
+    if (!tag || meta?.tags?.includes(tag)) return;
+    patch({ tags: [...(meta?.tags ?? []), tag] });
+  };
+
+  const tickTask = async (n: number, done: boolean) => {
+    if (!token || !meta || !aiNotes) return;
+    const before = aiNotes;
+    setAiNotes(setTaskDone(aiNotes, n, done));
+    try {
+      const r = await toggleAction(token, meta, n, done);
+      setMeta(r.meta);
+      setAiNotes(r.markdown);
+    } catch {
+      setAiNotes(before);
+      setMessage("Couldn't save to Google Drive. Check your connection and try again.");
+    }
+  };
+
+  const addToTodos = async (text: string) => {
+    if (!token || !meta) return;
+    const key = parseAction(text).title.toLowerCase();
+    setOnBoard((s) => new Set(s).add(key));
+    try {
+      await addActionToTodos(token, meta, text);
+    } catch {
+      setOnBoard((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+      setMessage("Couldn't add it to your to-dos. Check your connection and try again.");
+    }
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "ai", label: "AI notes" },
     { id: "notes", label: "My notes" },
@@ -246,6 +325,60 @@ function NotePage() {
               {new Date(meta.createdAt).toLocaleString()} · {formatDuration(meta.durationSec * 1000)} ·{" "}
               {meta.language === "hi-IN" ? "हिंदी" : "English"}
             </p>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <button
+                onClick={() => patch({ pinned: !meta.pinned })}
+                className={`rounded-full border px-3 py-1 ${meta.pinned ? "border-accent bg-accent-soft" : "border-border"}`}
+              >
+                📌 {meta.pinned ? "Pinned" : "Pin"}
+              </button>
+              <select
+                aria-label="Project"
+                value={meta.projectId ?? ""}
+                onChange={(e) => changeProject(e.target.value)}
+                className="rounded-full border border-border bg-card px-3 py-1"
+              >
+                <option value="">📁 No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    📁 {p.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Meeting type"
+                value={getTemplate(meta.template).id}
+                onChange={(e) => patch({ template: e.target.value })}
+                className="rounded-full border border-border bg-card px-3 py-1"
+              >
+                {TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.emoji} {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {meta.tags?.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => patch({ tags: meta.tags?.filter((x) => x !== t) })}
+                  className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs"
+                  aria-label={`Remove tag ${t}`}
+                >
+                  #{t} ×
+                </button>
+              ))}
+              <form onSubmit={addTag}>
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  placeholder="+ tag"
+                  className="w-20 rounded-full bg-transparent px-2 py-0.5 text-xs outline-none focus:w-32 focus:bg-card"
+                />
+              </form>
+            </div>
 
             <div className="mt-4">
               {audioUrl ? (
@@ -307,10 +440,27 @@ function NotePage() {
                         disabled={!!aiBusy}
                         className="rounded-full border border-border px-3 py-1 text-xs font-medium disabled:opacity-40"
                       >
-                        Rewrite
+                        Rewrite as {getTemplate(meta.template).name}
                       </button>
                     </div>
-                    <Markdown source={aiNotes} />
+                    <Markdown
+                      source={aiNotes}
+                      onToggleTask={tickTask}
+                      taskExtra={(text) =>
+                        /^none mentioned/i.test(text) ? null : onBoard.has(parseAction(text).title.toLowerCase()) ? (
+                          <span className="shrink-0 self-start whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] text-muted">
+                            ✓ In to-dos
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => addToTodos(text)}
+                            className="shrink-0 self-start whitespace-nowrap rounded-full border border-border px-2 py-0.5 text-[11px] font-medium hover:border-accent"
+                          >
+                            + To-do
+                          </button>
+                        )
+                      }
+                    />
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-3 py-6 text-center">

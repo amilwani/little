@@ -18,6 +18,8 @@ export type PendingNote = {
   notes: string;
   transcript: Transcript;
   audio: Blob | null;
+  projectId?: string;
+  template?: string;
 };
 
 export const cache = {

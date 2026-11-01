@@ -23,6 +23,12 @@ home screen as a PWA.
 | AI meeting notes: summary, key points, action items, decisions | Done |
 | AI transcripts from the recording (Gemini or OpenAI key) | Done |
 | Dictate: talk, get clean text, copy or save | Done |
+| Projects: group notes, drag and drop, select and move | Done |
+| Meeting templates: 1:1, process walkthrough, review, brainstorming, decision making | Done |
+| Shared projects: share by Google email; team tasks per project; private to-dos stay private | Done |
+| To-do dashboard: complete vs in review, by project, by person, due this week | Done |
+| Search inside notes, transcripts and AI notes; tags; pinned notes | Done |
+| To-do board (To do, In progress, In review, Complete) with Team tasks and My tasks, with "+ To-do" on meeting action items | Done |
 
 ## How data is stored in Drive
 
@@ -30,6 +36,8 @@ home screen as a PWA.
 Little/
   index.json                 list of notes (keeps the notes list fast)
   settings.json              user settings, including their AI keys
+  todos.json                 the to-do board
+  Launch/                    a project folder holds its notes' folders
   2026-11-01 Team sync/
     notes.md                 the note, readable in Drive
     transcript.json          transcript with timestamps
@@ -66,6 +74,17 @@ npx auth secret                 # prints a value for AUTH_SECRET
 npm install
 npm run dev                     # http://localhost:3000
 ```
+
+### 2b. Google file picker (for joining shared projects)
+
+Teammates join a shared project by picking its folder once in Google's file picker.
+
+1. In Google Cloud, **APIs & Services → Library**, enable **Google Picker API**.
+2. **APIs & Services → Credentials → Create credentials → API key**. Restrict it to the Google Picker API and to
+   your site's address.
+3. Copy your **project number** from the Cloud console's home page.
+4. Set `NEXT_PUBLIC_GOOGLE_API_KEY` (the key) and `NEXT_PUBLIC_GOOGLE_APP_ID` (the project number) in `.env.local` and
+   in Vercel, then redeploy.
 
 ### 3. Deploy to Vercel
 

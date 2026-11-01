@@ -5,6 +5,7 @@
 // Little's server.
 
 import type Anthropic from "@anthropic-ai/sdk";
+import { getTemplate, type Template } from "./templates";
 import type { AiProvider, Settings, Transcript, TranscriptSegment } from "./drive";
 
 export const MODELS = {
@@ -172,22 +173,17 @@ function transcriptText(t: Transcript) {
     .join("\n");
 }
 
-const NOTES_SYSTEM = `You write meeting notes from a transcript and the attendee's own rough notes.
+function notesSystem(template: Template) {
+  return `You write meeting notes from a transcript and the attendee's own rough notes. This was a "${template.name}" meeting.
 Return Markdown only, with these sections in this order:
-## Summary
-Two to four sentences on what the meeting was about and what came out of it.
-## Key points
-Short bullet points.
-## Action items
-A task list using "- [ ] " items, each with the owner's name in bold when the transcript names one, and a due date when one was mentioned. Write "- None mentioned" if there are none.
-## Decisions
-Bullet points, only if decisions were made; otherwise leave this section out.
+${template.aiSections}
 
-Rules: use only what the transcript and notes say; never invent names, numbers or dates. The attendee's notes show what they cared about, so give those points weight. Write in the language the meeting mostly used: Hindi in Devanagari script, or English. Keep it concise.`;
+Rules: use only what the transcript and notes say; never invent names, numbers or dates. The attendee's notes show what they cared about, so give those points weight. Write in the language the meeting mostly used: Hindi in Devanagari script, or English. Keep the section headings in English so the app can find them. Keep it concise.`;
+}
 
 export async function generateNotes(
   cfg: AiConfig,
-  input: { title: string; language: string; transcript: Transcript; notes: string },
+  input: { title: string; language: string; transcript: Transcript; notes: string; template?: string },
 ): Promise<string> {
   if (!input.transcript.segments.length && !input.notes.trim()) {
     throw new AiError("There's no transcript or notes to work from yet.");
@@ -200,7 +196,7 @@ ${input.notes.trim() || "(none)"}
 
 Transcript:
 ${transcriptText(input.transcript) || "(empty)"}`;
-  return stripFences(await complete(cfg, NOTES_SYSTEM, user));
+  return stripFences(await complete(cfg, notesSystem(getTemplate(input.template)), user));
 }
 
 const CLEANUP_SYSTEM = `You turn raw dictation into clean, ready-to-send text.
