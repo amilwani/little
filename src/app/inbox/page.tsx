@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { Icon } from "@/components/Icon";
+import { KeyNeeded } from "@/components/KeyNeeded";
 import { Mascot } from "@/components/Mascot";
 import { AiError, extractSlackActions, pickTextAi } from "@/lib/ai";
 import { dueLabel, relTime } from "@/lib/dates";
@@ -133,6 +134,12 @@ function Inbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ai?.provider, ai?.apiKey]);
 
+  // A key was just added: read the messages that were waiting for it.
+  useEffect(() => {
+    if (needKey && ai) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needKey, !!ai]);
+
   // Check Slack on open, unless we looked a moment ago.
   useEffect(() => {
     if (authStatus !== "authenticated" || !settingsLoaded) return;
@@ -232,14 +239,9 @@ function Inbox() {
             )}
 
             {needKey && !ai && (
-              <Link
-                href="/settings"
-                className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm hover:border-foreground/30"
-              >
-                <Icon name="sparkles" size={16} className="text-accent" />
-                <span className="flex-1">Add a free Gemini key in Settings so Little can pick out your to-dos.</span>
-                <Icon name="chevronRight" size={15} className="text-muted" />
-              </Link>
+              <div className="mt-4">
+                <KeyNeeded feature="Slack inbox" />
+              </div>
             )}
 
             {open.length > 0 ? (

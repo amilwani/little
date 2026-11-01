@@ -638,7 +638,7 @@ function GettingStarted({ calendar, hasKey }: { calendar: boolean; hasKey: boole
     { href: "/notes/write", icon: "doc", title: "Or write a note", body: "Type it yourself, no recording" },
     { href: "/ideas", icon: "bulb", title: "Jot down an idea", body: "Half-formed is fine. AI can riff on it" },
     ...(calendar ? [] : [{ href: "#", icon: "calendar" as const, title: "Connect your calendar", body: "See meetings and record in one tap", onClick: () => connectCalendar() }]),
-    ...(hasKey ? [] : [{ href: "/settings", icon: "sparkles" as const, title: "Turn on AI notes", body: "Add a free Gemini key in a minute" }]),
+    ...(hasKey ? [] : [{ href: "/settings#ai", icon: "sparkles" as const, title: "Turn on AI notes", body: "Free with your Google account, 2 steps" }]),
     { href: "/notes#new-project", icon: "users", title: "Start a team project", body: "Share notes and to-dos with your team" },
     { href: "/inbox", icon: "inbox", title: "Connect Slack", body: "Asks from DMs and @mentions become to-dos" },
   ];
