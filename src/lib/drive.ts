@@ -12,6 +12,8 @@
 //
 // We use the `drive.file` scope, so Little can only see files it created.
 
+import type { Lang } from "./languages";
+
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -23,7 +25,7 @@ export type NoteMeta = {
   createdAt: string; // ISO
   updatedAt: string; // ISO
   durationSec: number;
-  language: "en-IN" | "hi-IN";
+  language: Lang;
   folderId: string;
   notesFileId?: string;
   transcriptFileId?: string;
@@ -63,6 +65,8 @@ export type Project = {
 export type TranscriptSegment = {
   text: string;
   startSec: number;
+  /** Who said it, when an AI transcript could tell. */
+  speaker?: string;
 };
 
 export type Transcript = {
@@ -427,7 +431,7 @@ export type AiProvider = "gemini" | "openai" | "anthropic";
 export type Settings = {
   version: 1;
   saveAudio: boolean;
-  defaultLanguage: "en-IN" | "hi-IN";
+  defaultLanguage: Lang;
   aiProvider: AiProvider | null;
   apiKeys: Partial<Record<AiProvider, string>>;
 };

@@ -6,6 +6,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import { getTemplate, type Template } from "./templates";
+import { languageForAi } from "./languages";
 import type { AiProvider, Settings, Transcript, TranscriptSegment } from "./drive";
 
 export const MODELS = {
@@ -46,7 +47,7 @@ export function pickTranscriber(settings: Settings): AiConfig | null {
 }
 
 function languageName(lang: string) {
-  return lang.startsWith("hi") ? "Hindi" : "English";
+  return languageForAi(lang);
 }
 
 function friendlyError(provider: AiProvider, status: number, body: string): AiError {
@@ -169,7 +170,7 @@ function stripFences(s: string) {
 
 function transcriptText(t: Transcript) {
   return t.segments
-    .map((s) => `[${Math.floor(s.startSec / 60)}:${String(s.startSec % 60).padStart(2, "0")}] ${s.text}`)
+    .map((s) => `[${Math.floor(s.startSec / 60)}:${String(s.startSec % 60).padStart(2, "0")}] ${s.speaker ? `${s.speaker}: ` : ""}${s.text}`)
     .join("\n");
 }
 
@@ -210,15 +211,21 @@ export async function cleanupDictation(cfg: AiConfig, text: string): Promise<str
   return stripFences(await complete(cfg, CLEANUP_SYSTEM, text));
 }
 
-const TRANSCRIBE_SYSTEM = `Transcribe this audio recording accurately.
-Return JSON only: an array of objects {"startSec": number, "text": string}, one per sentence or short group of sentences, in order, where startSec is when it starts in whole seconds.
+const TRANSCRIBE_SYSTEM = `Transcribe this audio recording accurately, noting who is speaking.
+Return JSON only: an array of objects {"startSec": number, "speaker": string, "text": string}, one per turn or short group of sentences by the same person, in order, where startSec is when it starts in whole seconds.
+For "speaker", use the person's name when the conversation makes it clear (someone introduces themselves or is addressed by name, or it matches the invite list); otherwise "Speaker 1", "Speaker 2" and so on, consistently for the same voice.
 Write Hindi in Devanagari script and English in Latin script; keep mixed Hinglish exactly as spoken. Do not translate, summarize or add anything. Return [] if nobody speaks.`;
 
 // Gemini accepts up to ~20 MB per request including base64 overhead.
 const GEMINI_MAX_BYTES = 14 * 1024 * 1024;
 const OPENAI_MAX_BYTES = 25 * 1024 * 1024;
 
-export async function transcribeAudio(cfg: AiConfig, audio: Blob, language: string): Promise<Transcript> {
+export async function transcribeAudio(
+  cfg: AiConfig,
+  audio: Blob,
+  language: string,
+  people?: string[],
+): Promise<Transcript> {
   if (cfg.provider === "anthropic") throw new AiError("Claude can't transcribe audio. Add a Gemini or OpenAI key.");
   const mimeType = (audio.type || "audio/webm").split(";")[0];
 
@@ -233,7 +240,9 @@ export async function transcribeAudio(cfg: AiConfig, audio: Blob, language: stri
         TRANSCRIBE_SYSTEM,
         [
           { inlineData: { mimeType, data: await blobToBase64(audio) } },
-          { text: `Main language: ${languageName(language)}.` },
+          {
+            text: `Main language: ${languageName(language)}.${people?.length ? ` Invited: ${people.join(", ")}.` : ""}`,
+          },
         ],
         true,
       );
@@ -249,9 +258,10 @@ export async function transcribeAudio(cfg: AiConfig, audio: Blob, language: stri
     }
     const list = Array.isArray(parsed) ? parsed : [];
     const segments: TranscriptSegment[] = list
-      .map((s: { startSec?: unknown; text?: unknown }) => ({
+      .map((s: { startSec?: unknown; text?: unknown; speaker?: unknown }) => ({
         startSec: Math.max(0, Math.round(Number(s.startSec) || 0)),
         text: String(s.text ?? "").trim(),
+        speaker: typeof s.speaker === "string" && s.speaker.trim() ? s.speaker.trim() : undefined,
       }))
       .filter((s) => s.text);
     return { language, source: "gemini", segments };
@@ -266,7 +276,7 @@ export async function transcribeAudio(cfg: AiConfig, audio: Blob, language: stri
   form.append("file", new File([audio], `audio.${ext}`, { type: mimeType }));
   form.append("model", MODELS.openaiTranscribe);
   form.append("response_format", "verbose_json");
-  form.append("language", language.startsWith("hi") ? "hi" : "en");
+  form.append("language", language.split("-")[0]);
   let res: Response;
   try {
     res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
@@ -285,4 +295,33 @@ export async function transcribeAudio(cfg: AiConfig, audio: Blob, language: stri
       ? [{ startSec: 0, text: data.text.trim() }]
       : [];
   return { language, source: "openai", segments };
+}
+
+// ---- Ask your notes -------------------------------------------------------------
+
+export type AskSource = { n: number; title: string; date: string; text: string };
+
+const ASK_SYSTEM = `You answer questions about the user's own meetings, using only the meeting notes provided.
+Each meeting is numbered like [3]. Cite the meetings you used with their numbers in square brackets right after the sentence, e.g. "The launch moved to the 15th [3]."
+If the notes don't contain the answer, say so plainly and suggest what to search for instead. Never invent facts, names, dates or numbers.
+Answer in the language of the question (Hindi in Devanagari, or English). Be concise: a short paragraph or a few bullet points. Markdown is fine.`;
+
+export async function askNotes(cfg: AiConfig, question: string, sources: AskSource[]): Promise<string> {
+  if (!question.trim()) throw new AiError("Type a question first.");
+  if (!sources.length) throw new AiError("There are no notes to search yet.");
+  const today = new Date().toDateString();
+  const user = `Today is ${today}.
+
+${sources.map((s) => `[${s.n}] ${s.title} (${s.date})\n${s.text}`).join("\n\n---\n\n")}
+
+Question: ${question.trim()}`;
+  return stripFences(await complete(cfg, ASK_SYSTEM, user));
+}
+
+// ---- Translation ------------------------------------------------------------------
+
+export async function translateMarkdown(cfg: AiConfig, markdown: string, toLang: string): Promise<string> {
+  const system = `Translate the user's Markdown meeting notes into ${languageForAi(toLang)}.
+Keep the Markdown structure exactly: headings, bullets, "- [ ]" task boxes, bold names. Keep people's names, product names and numbers as they are. Return only the translated Markdown.`;
+  return stripFences(await complete(cfg, system, markdown));
 }

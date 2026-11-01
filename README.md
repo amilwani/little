@@ -28,6 +28,11 @@ home screen as a PWA.
 | Shared projects: share by Google email; team tasks per project; private to-dos stay private | Done |
 | To-do dashboard: complete vs in review, by project, by person, due this week | Done |
 | Meetings from Google Calendar: record with the right title, people and template; notes link back to the meeting | Done |
+| Speaker labels in AI transcripts (Gemini); tap a transcript line to play from there | Done |
+| Share a note (WhatsApp, any app), email it, or save it as a Google Doc | Done |
+| Ask your notes: questions answered from your meetings, with links | Done |
+| 11 Indian languages, and translate AI notes into any of them | Done |
+| App shortcuts: long-press the icon for Dictate, Record, To-dos, Meetings | Done |
 | Search inside notes, transcripts and AI notes; tags; pinned notes | Done |
 | To-do board (To do, In progress, In review, Complete) with Team tasks and My tasks, with "+ To-do" on meeting action items | Done |
 
