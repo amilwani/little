@@ -17,7 +17,7 @@ import type { Lang } from "./languages";
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
-export const ROOT_FOLDER_NAME = "Little";
+const ROOT_FOLDER_NAME = "Little";
 
 export type NoteMeta = {
   id: string; // our own id, stable across devices

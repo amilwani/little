@@ -702,7 +702,9 @@ function NotePage() {
             {aiError && <p className="mt-5 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{aiError}</p>}
             {showKeyNeeded && (
               <div className="mt-5">
-                <KeyNeeded feature={showKeyNeeded === "notes" ? "AI notes" : "AI transcripts"} audio={showKeyNeeded === "transcript"} />
+                <KeyNeeded feature={showKeyNeeded === "notes" ? "AI notes" : "AI transcripts"} audio={showKeyNeeded === "transcript"}
+                  onDone={() => setTimeout(() => setShowKeyNeeded(null), 1800)}
+                />
               </div>
             )}
 
