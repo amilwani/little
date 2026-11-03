@@ -15,6 +15,7 @@ import { isMine, loadTodos, updateTodos, type Todo } from "@/lib/todos";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
 import { DAY, dueLabel, localDay, relTime } from "@/lib/dates";
+import { pendingCount } from "@/lib/slack";
 
 function greeting() {
   const h = new Date().getHours();
@@ -41,6 +42,13 @@ export function HomeDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [ask, setAsk] = useState("");
   const [ideas, setIdeas] = useState<Idea[] | null>(null);
+  const [slackWaiting, setSlackWaiting] = useState(0);
+  useEffect(() => {
+    const update = () => setSlackWaiting(pendingCount());
+    update();
+    window.addEventListener("little:inbox", update);
+    return () => window.removeEventListener("little:inbox", update);
+  }, []);
   const [justDone, setJustDone] = useState<Set<string>>(new Set());
   const calendar = hasCalendar(scope);
 
@@ -278,6 +286,19 @@ export function HomeDashboard() {
           <Link href="/notes" className="mt-4 flex items-center gap-2 rounded-lg bg-subtle px-3.5 py-2.5 text-sm">
             <Icon name="refresh" size={15} className="text-muted" />
             {pending.length} note{pending.length === 1 ? "" : "s"} saved on this device, waiting to upload
+          </Link>
+        )}
+
+        {slackWaiting > 0 && (
+          <Link
+            href="/inbox"
+            className="mt-4 flex items-center gap-2.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm shadow-sm transition hover:border-foreground/30"
+          >
+            <Icon name="inbox" size={16} className="text-accent" />
+            <span className="flex-1">
+              {slackWaiting} thing{slackWaiting === 1 ? "" : "s"} from Slack to review
+            </span>
+            <Icon name="chevronRight" size={15} className="text-muted" />
           </Link>
         )}
 
@@ -619,6 +640,7 @@ function GettingStarted({ calendar, hasKey }: { calendar: boolean; hasKey: boole
     ...(calendar ? [] : [{ href: "#", icon: "calendar" as const, title: "Connect your calendar", body: "See meetings and record in one tap", onClick: () => connectCalendar() }]),
     ...(hasKey ? [] : [{ href: "/settings", icon: "sparkles" as const, title: "Turn on AI notes", body: "Add a free Gemini key in a minute" }]),
     { href: "/notes#new-project", icon: "users", title: "Start a team project", body: "Share notes and to-dos with your team" },
+    { href: "/inbox", icon: "inbox", title: "Connect Slack", body: "Asks from DMs and @mentions become to-dos" },
   ];
   return (
     <section className="mt-8">

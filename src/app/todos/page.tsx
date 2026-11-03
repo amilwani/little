@@ -13,6 +13,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import Link from "next/link";
+import { pendingCount } from "@/lib/slack";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -206,24 +207,34 @@ function Todos() {
               </button>
             ))}
           </div>
-          <div className="flex rounded-lg bg-subtle p-0.5" role="tablist" aria-label="View">
-            {(
-              [
-                [false, "Board", "board"],
-                [true, "Dashboard", "chart"],
-              ] as const
-            ).map(([dash, label, icon]) => (
-              <button
-                key={label}
-                role="tab"
-                aria-selected={showDashboard === dash}
-                onClick={() => setShowDashboard(dash)}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${showDashboard === dash ? "bg-card shadow-sm" : "text-muted hover:text-foreground"}`}
-              >
-                <Icon name={icon} size={15} />
-                <span className="hidden sm:inline">{label}</span>
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <Link
+              href="/inbox"
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground/80 transition hover:bg-subtle"
+            >
+              <Icon name="inbox" size={15} />
+              <span className="hidden sm:inline">Slack inbox</span>
+              <SlackCount />
+            </Link>
+            <div className="flex rounded-lg bg-subtle p-0.5" role="tablist" aria-label="View">
+              {(
+                [
+                  [false, "Board", "board"],
+                  [true, "Dashboard", "chart"],
+                ] as const
+              ).map(([dash, label, icon]) => (
+                <button
+                  key={label}
+                  role="tab"
+                  aria-selected={showDashboard === dash}
+                  onClick={() => setShowDashboard(dash)}
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${showDashboard === dash ? "bg-card shadow-sm" : "text-muted hover:text-foreground"}`}
+                >
+                  <Icon name={icon} size={15} />
+                  <span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <p className="mt-3 text-xs text-muted">
@@ -236,13 +247,22 @@ function Todos() {
           <div className="no-scrollbar -mx-4 mt-4 flex gap-1.5 overflow-x-auto px-4 md:mx-0 md:px-0">
             <Chip active={!project} onClick={() => setProject(null)} label="All projects" />
             {activeProjects.map((p) => (
-              <Chip key={p.id} active={project === p.id} onClick={() => setProject(p.id)} label={p.name} color={p.color} />
+              <Chip
+                key={p.id}
+                active={project === p.id}
+                onClick={() => setProject(p.id)}
+                label={p.name}
+                color={p.color}
+              />
             ))}
           </div>
         )}
 
         {!showDashboard && (
-          <form onSubmit={add} className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card pl-3.5 pr-1.5 focus-within:border-foreground/30">
+          <form
+            onSubmit={add}
+            className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card pl-3.5 pr-1.5 focus-within:border-foreground/30"
+          >
             <Icon name="plus" size={17} className="text-muted" />
             <input
               ref={inputRef}
@@ -283,7 +303,10 @@ function Todos() {
             <p className="max-w-xs text-sm text-muted">
               Create a project and share it with your team. Its tasks show up here for everyone.
             </p>
-            <Link href="/notes#new-project" className="mt-1 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background">
+            <Link
+              href="/notes#new-project"
+              className="mt-1 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background"
+            >
               New project
             </Link>
           </div>
@@ -318,15 +341,21 @@ function Todos() {
         )}
         {!showDashboard && visible.length > 0 && (
           <>
-            <p className="mt-1 hidden text-xs text-muted md:block">Drag cards between columns. Click a card to edit it.</p>
-            <p className="mt-1 text-xs text-muted md:hidden">Press and hold a card to drag it. Swipe sideways for more columns.</p>
+            <p className="mt-1 hidden text-xs text-muted md:block">
+              Drag cards between columns. Click a card to edit it.
+            </p>
+            <p className="mt-1 text-xs text-muted md:hidden">
+              Press and hold a card to drag it. Swipe sideways for more columns.
+            </p>
           </>
         )}
       </main>
 
       <DragOverlay dropAnimation={null}>
         {dragging && (
-          <div className="rotate-1 rounded-xl border border-border bg-card px-3 py-2.5 text-sm shadow-2xl">{dragging.title}</div>
+          <div className="rotate-1 rounded-xl border border-border bg-card px-3 py-2.5 text-sm shadow-2xl">
+            {dragging.title}
+          </div>
         )}
       </DragOverlay>
 
@@ -350,7 +379,17 @@ function Todos() {
   );
 }
 
-function Chip({ label, color, active, onClick }: { label: string; color?: string; active: boolean; onClick: () => void }) {
+function Chip({
+  label,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  color?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
@@ -413,7 +452,11 @@ function Card({
     >
       <div className={`leading-snug ${todo.status === "done" ? "text-muted line-through" : ""}`}>{todo.title}</div>
       <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted">
-        {todo.urgent && <span className="flex items-center gap-1 font-medium text-accent"><Icon name="flag" size={11} /> Urgent</span>}
+        {todo.urgent && (
+          <span className="flex items-center gap-1 font-medium text-accent">
+            <Icon name="flag" size={11} /> Urgent
+          </span>
+        )}
         {todo.owner && (
           <span className="flex items-center gap-1">
             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-subtle text-[9px] font-semibold text-foreground">
@@ -461,9 +504,13 @@ function EditSheet({
   onDelete: () => void;
 }) {
   const [t, setT] = useState(todo);
-  const field = "w-full rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-foreground/30";
+  const field =
+    "w-full rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-foreground/30";
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-[2px] md:items-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-[2px] md:items-center"
+      onClick={onClose}
+    >
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
@@ -472,11 +519,21 @@ function EditSheet({
         }}
         className="safe-bottom animate-pop w-full max-w-md space-y-4 rounded-t-2xl border border-border bg-card p-5 shadow-2xl md:rounded-2xl"
       >
-        <textarea value={t.title} onChange={(e) => setT({ ...t, title: e.target.value })} rows={2} aria-label="Task" className="w-full resize-none bg-transparent text-lg font-medium leading-snug outline-none" />
+        <textarea
+          value={t.title}
+          onChange={(e) => setT({ ...t, title: e.target.value })}
+          rows={2}
+          aria-label="Task"
+          className="w-full resize-none bg-transparent text-lg font-medium leading-snug outline-none"
+        />
         <div className="grid grid-cols-2 gap-3 text-sm">
           <label className="space-y-1">
             <span className="text-muted">Status</span>
-            <select value={t.status} onChange={(e) => setT({ ...t, status: e.target.value as TodoStatus })} className={field}>
+            <select
+              value={t.status}
+              onChange={(e) => setT({ ...t, status: e.target.value as TodoStatus })}
+              className={field}
+            >
               {STATUSES.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -486,15 +543,29 @@ function EditSheet({
           </label>
           <label className="space-y-1">
             <span className="text-muted">Due</span>
-            <input type="date" value={t.due ?? ""} onChange={(e) => setT({ ...t, due: e.target.value || undefined })} className={field} />
+            <input
+              type="date"
+              value={t.due ?? ""}
+              onChange={(e) => setT({ ...t, due: e.target.value || undefined })}
+              className={field}
+            />
           </label>
           <label className="space-y-1">
             <span className="text-muted">Owner</span>
-            <input value={t.owner ?? ""} onChange={(e) => setT({ ...t, owner: e.target.value || undefined })} placeholder="Who" className={field} />
+            <input
+              value={t.owner ?? ""}
+              onChange={(e) => setT({ ...t, owner: e.target.value || undefined })}
+              placeholder="Who"
+              className={field}
+            />
           </label>
           <label className="space-y-1">
             <span className="text-muted">Project</span>
-            <select value={t.projectId ?? ""} onChange={(e) => setT({ ...t, projectId: e.target.value || undefined })} className={field}>
+            <select
+              value={t.projectId ?? ""}
+              onChange={(e) => setT({ ...t, projectId: e.target.value || undefined })}
+              className={field}
+            >
               <option value="">Private (only me)</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -505,14 +576,30 @@ function EditSheet({
           </label>
         </div>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={!!t.urgent} onChange={(e) => setT({ ...t, urgent: e.target.checked })} /> Urgent
+          <input type="checkbox" checked={!!t.urgent} onChange={(e) => setT({ ...t, urgent: e.target.checked })} />{" "}
+          Urgent
         </label>
         {t.noteId && (
-          <Link href={`/notes/${t.noteId}`} className="flex items-center gap-2 rounded-lg bg-subtle px-3 py-2 text-sm hover:bg-border/60">
+          <Link
+            href={`/notes/${t.noteId}`}
+            className="flex items-center gap-2 rounded-lg bg-subtle px-3 py-2 text-sm hover:bg-border/60"
+          >
             <Icon name="mic" size={15} className="text-muted" />
             <span className="min-w-0 flex-1 truncate">From: {noteTitle ?? "open note"}</span>
             <Icon name="chevronRight" size={15} className="text-muted" />
           </Link>
+        )}
+        {t.link && (
+          <a
+            href={t.link}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-lg bg-subtle px-3 py-2 text-sm hover:bg-border/60"
+          >
+            <Icon name="inbox" size={15} className="text-muted" />
+            <span className="min-w-0 flex-1 truncate">From Slack: open the message</span>
+            <Icon name="external" size={15} className="text-muted" />
+          </a>
         )}
         <div className="flex items-center gap-3 pt-1">
           <button type="submit" className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background">
@@ -532,4 +619,17 @@ function EditSheet({
       </form>
     </div>
   );
+}
+
+function SlackCount() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const update = () => setN(pendingCount());
+    update();
+    window.addEventListener("little:inbox", update);
+    return () => window.removeEventListener("little:inbox", update);
+  }, []);
+  return n ? (
+    <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-[18px] text-white">{n}</span>
+  ) : null;
 }

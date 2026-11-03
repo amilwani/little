@@ -21,6 +21,7 @@ export const NAV: { href: string; label: string; icon: IconName; key: string }[]
   { href: "/notes", label: "Notes", icon: "notes", key: "o" },
   { href: "/ideas", label: "Ideas", icon: "bulb", key: "i" },
   { href: "/todos", label: "To-dos", icon: "todo", key: "t" },
+  { href: "/inbox", label: "Slack inbox", icon: "inbox", key: "b" },
   { href: "/meetings", label: "Meetings", icon: "calendar", key: "m" },
   { href: "/ask", label: "Ask", icon: "sparkles", key: "a" },
 ];

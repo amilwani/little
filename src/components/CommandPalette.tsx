@@ -34,7 +34,7 @@ const ACTIONS: Item[] = [
   { id: "g-set", label: "Settings", icon: "settings", href: "/settings", group: "Go to" },
 ];
 
-const SHORTCUTS: Record<string, string> = { n: "/notes/new", d: "/dictate", w: "/notes/write", t: "/todos", m: "/meetings", a: "/ask", h: "/", o: "/notes", i: "/ideas" };
+const SHORTCUTS: Record<string, string> = { n: "/notes/new", d: "/dictate", w: "/notes/write", t: "/todos", m: "/meetings", a: "/ask", h: "/", o: "/notes", i: "/ideas", b: "/inbox" };
 
 function typing(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null;

@@ -24,6 +24,8 @@ export type Todo = {
   owner?: string;
   due?: string; // yyyy-mm-dd
   urgent?: boolean;
+  /** Where it came from outside Little, e.g. a Slack message link. */
+  link?: string;
   /** Email of whoever added it. */
   createdBy?: string;
   createdAt: string;
