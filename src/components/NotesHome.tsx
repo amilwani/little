@@ -1,5 +1,7 @@
 "use client";
 
+import { NoteIcon } from "@/components/NoteIcon";
+import { relTime } from "@/lib/dates";
 import {
   DndContext,
   DragOverlay,
@@ -235,12 +237,13 @@ export function NotesHome() {
 
   const heading = currentProject?.name ?? (projectFilter === NONE ? "No project" : "Notes");
   const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const plural = (n: number) => `${n} note${n === 1 ? "" : "s"}`;
   const subtitle = currentProject
-    ? `${counts.get(currentProject.id) ?? 0} notes${currentProject.shared ? " · Shared with your team" : ""}`
+    ? `${plural(counts.get(currentProject.id) ?? 0)}${currentProject.shared ? " · Shared with your team" : ""}`
     : projectFilter === NONE
       ? "Notes that aren't in a project"
-      : index
-        ? `${index.notes.length} note${index.notes.length === 1 ? "" : "s"}`
+      : index?.notes.length
+        ? plural(index.notes.length)
         : today;
   const meetingNow = nextMeeting && new Date(nextMeeting.start).getTime() <= Date.now();
 
@@ -330,7 +333,7 @@ export function NotesHome() {
           )}
           <div className="mt-5 flex items-start gap-3 md:mt-0">
             <div className="min-w-0 flex-1">
-              <h1 className="flex items-center gap-2.5 text-[26px] font-semibold leading-tight tracking-tight">
+              <h1 className="flex items-center gap-2.5 font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">
                 {currentProject && <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: currentProject.color }} aria-hidden />}
                 <span className="truncate">{heading}</span>
               </h1>
@@ -477,52 +480,24 @@ export function NotesHome() {
                 ))}
               </div>
             ) : index.notes.length === 0 && pending.length === 0 ? (
-              <div className="mt-2">
-                <div className="flex items-center gap-3">
-                  <Mascot size={44} />
-                  <div>
-                    <p className="font-medium">Welcome to Little</p>
-                    <p className="text-sm text-muted">Here&apos;s how to get started.</p>
-                  </div>
+              <div className="mt-10 flex flex-col items-center text-center">
+                <Mascot size={72} />
+                <p className="mt-4 font-display text-[26px] leading-tight">Your first note is one tap away</p>
+                <p className="mt-1 max-w-xs text-sm text-muted">Record a meeting or type one yourself. Everything you capture lives here.</p>
+                <div className="mt-5 flex gap-2">
+                  <Link
+                    href="/notes/new"
+                    className="flex items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-sm transition hover:opacity-90 active:scale-[0.97]"
+                  >
+                    <span className="pulse-dot h-2 w-2 rounded-full bg-accent" /> Record
+                  </Link>
+                  <Link
+                    href="/notes/write"
+                    className="flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition hover:bg-subtle active:scale-[0.97]"
+                  >
+                    <Icon name="doc" size={15} /> Write
+                  </Link>
                 </div>
-                <ul className="mt-5 grid gap-2 sm:grid-cols-2">
-                  {[
-                    { href: "/notes/new", icon: "mic" as const, title: "Record a meeting", body: "Live transcript now, AI notes after", primary: true },
-                    { href: "/notes/write", icon: "doc" as const, title: "Write a note", body: "Type notes yourself, no recording" },
-                    { href: "/dictate", icon: "pen" as const, title: "Dictate", body: "Talk, then paste clean text anywhere" },
-                    ...(hasCalendar(scope)
-                      ? []
-                      : [{ href: "/meetings", icon: "calendar" as const, title: "Connect your calendar", body: "See meetings and record in one tap" }]),
-                    ...(Object.values(settings.apiKeys ?? {}).some(Boolean)
-                      ? []
-                      : [{ href: "/settings", icon: "sparkles" as const, title: "Turn on AI notes", body: "Add a free Gemini key in a minute" }]),
-                    { href: "#new-project", icon: "users" as const, title: "Start a team project", body: "Share notes and to-dos with your team" },
-                  ].map((a) => (
-                    <li key={a.title}>
-                      <Link
-                        href={a.href}
-                        onClick={(e) => {
-                          if (a.href === "#new-project") {
-                            e.preventDefault();
-                            setCreating(true);
-                          }
-                        }}
-                        className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 transition hover:border-foreground/30"
-                      >
-                        <span
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${a.primary ? "bg-accent text-white" : "bg-subtle"}`}
-                        >
-                          <Icon name={a.icon} size={19} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[15px] font-medium">{a.title}</span>
-                          <span className="block text-[13px] text-muted">{a.body}</span>
-                        </span>
-                        <Icon name="chevronRight" size={16} className="text-muted" />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
               </div>
             ) : visible.length === 0 ? (
               <div className="mt-12 flex flex-col items-center gap-3 text-center">
@@ -741,14 +716,11 @@ function NoteCard({
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: note.id });
   const open = note.actions?.filter((a) => !a.done).length ?? 0;
   const template = note.template && note.template !== "general" ? getTemplate(note.template) : null;
-  const created = new Date(note.createdAt);
-  const recent = Date.now() - created.getTime() < 6 * 864e5;
-  const when = recent
-    ? created.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-    : created.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const when = relTime(note.createdAt);
 
   const body = (
     <div className="flex items-center gap-3">
+      <NoteIcon note={note} project={project} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] font-medium">{note.title}</div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">

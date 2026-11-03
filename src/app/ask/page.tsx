@@ -77,7 +77,8 @@ export default function AskPage() {
     setQuestion("");
     try {
       const pool = index.notes.filter((n) => !project || n.projectId === project).slice(0, MAX_NOTES);
-      setBusy(`Reading ${pool.length} meeting${pool.length === 1 ? "" : "s"}`);
+      if (!pool.length) return setError("There are no notes to read yet. Record or write one first, then ask away.");
+      setBusy(`Reading ${pool.length} note${pool.length === 1 ? "" : "s"}`);
 
       // Transcripts are long, so include them only for meetings that mention the question's words.
       const words = q
@@ -138,7 +139,7 @@ export default function AskPage() {
     <>
       <AppHeader />
       <main className="pb-nav mx-auto max-w-2xl px-4 pt-5 md:pt-8">
-        <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Ask your notes</h1>
+        <h1 className="font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">Ask your notes</h1>
         <p className="mt-0.5 text-sm text-muted">Answers come from your meetings, with links to the ones I used.</p>
         <form
           onSubmit={(e) => {
@@ -195,7 +196,18 @@ export default function AskPage() {
         )}
         {error && <p className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-sm text-muted">{error}</p>}
 
-        {answers.length === 0 && !busy ? (
+        {answers.length === 0 && !busy && index?.notes.length === 0 ? (
+          <div className="mt-12 flex flex-col items-center text-center">
+            <Mascot size={64} mood="sleepy" />
+            <p className="mt-4 font-display text-[24px] leading-tight">Nothing to search yet</p>
+            <p className="mt-1 max-w-xs text-sm text-muted">
+              Once you have a few notes, ask things like &ldquo;What did I promise this week?&rdquo; and get answers with links.
+            </p>
+            <Link href="/notes/new" className="mt-5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background">
+              Record your first note
+            </Link>
+          </div>
+        ) : answers.length === 0 && !busy ? (
           <div className="mt-8">
             <p className="mb-2 px-1 text-[13px] font-medium text-muted">Try asking</p>
             <ul className="-mx-2 flex flex-col">

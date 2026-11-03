@@ -201,7 +201,7 @@ export async function saveTranscript(token: string, meta: NoteMeta, transcript: 
 
 const TASK = /^(\s*[-*]\s+\[)([ xX])(\]\s+)(.*)$/;
 
-export function extractActions(markdown: string): ActionItem[] {
+function extractActions(markdown: string): ActionItem[] {
   return markdown
     .split("\n")
     .map((line) => line.match(TASK))

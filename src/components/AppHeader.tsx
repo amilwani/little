@@ -1,5 +1,6 @@
 "use client";
 
+import { OfflinePill } from "@/components/OfflinePill";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -30,7 +31,7 @@ export function isActive(pathname: string, href: string) {
 }
 
 /** Back goes to where you came from inside Little, or to `href` on a fresh visit. */
-export function BackButton({ href }: { href: string }) {
+function BackButton({ href }: { href: string }) {
   const router = useRouter();
   return (
     <Link
@@ -59,7 +60,10 @@ export function AppHeader({
   title,
   focus,
   actions,
+  hideRecord,
 }: {
+  /** Home has its own Record button. */
+  hideRecord?: boolean;
   back?: string;
   title?: string;
   /** Kept for older callers; the header is always full width now. */
@@ -73,7 +77,8 @@ export function AppHeader({
   return (
     <>
       {!focus && <Sidebar />}
-      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur-md max-md:border-b max-md:border-border/70">
+      <OfflinePill />
+      <header className={`sticky top-0 z-20 bg-background/80 backdrop-blur-xl ${hideRecord ? "md:bg-transparent md:backdrop-blur-none" : ""} max-md:border-b max-md:border-border/70`}>
         <div className={`mx-auto flex h-14 items-center gap-2 px-4 md:h-12 md:px-3 ${focus ? "max-w-6xl" : "md:px-4"}`}>
           <div className="flex min-w-0 items-center gap-2">
             {back ? <BackButton href={back} /> : <span className="md:hidden"><Logo /></span>}
@@ -108,7 +113,7 @@ export function AppHeader({
             >
               <Icon name="settings" size={18} />
             </Link>
-            {!focus && (
+            {!focus && !hideRecord && (
               <RecordLink className="ml-1 hidden h-8 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:opacity-90 md:flex">
                 <span className="h-2 w-2 rounded-full bg-accent" />
                 Record

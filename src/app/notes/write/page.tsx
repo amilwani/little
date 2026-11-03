@@ -1,6 +1,8 @@
 "use client";
 
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 import { NoteModeSwitch } from "@/components/NoteModeSwitch";
+import { defaultNoteTitle } from "@/lib/dates";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -10,10 +12,6 @@ import { saveNoteToDrive } from "@/lib/notes";
 import type { Project } from "@/lib/drive";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
-
-function defaultTitle() {
-  return `Note ${new Date().toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`;
-}
 
 export default function WriteNotePage() {
   return (
@@ -48,20 +46,15 @@ function WriteNote() {
 
   const empty = !title.trim() && !body.trim();
 
-  // Don't lose typing if the tab is closed.
-  useEffect(() => {
-    if (empty || saving) return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [empty, saving]);
+  // Don't lose typing if the tab is closed or a link is tapped.
+  useLeaveGuard(!empty && !saving, () => confirm("Leave without saving? What you typed will be lost."));
 
   const save = async () => {
     if (empty || saving) return;
     setError(null);
     const note: PendingNote = {
       id: crypto.randomUUID(),
-      title: title.trim() || body.trim().split("\n")[0].slice(0, 60) || defaultTitle(),
+      title: title.trim() || body.trim().split("\n")[0].slice(0, 60) || defaultNoteTitle(),
       createdAt: new Date().toISOString(),
       durationSec: 0,
       kind: "written",
@@ -131,7 +124,7 @@ function WriteNote() {
           placeholder="Untitled note"
           aria-label="Title"
           autoFocus
-          className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none placeholder:text-foreground/25"
+          className="w-full bg-transparent font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em] outline-none placeholder:text-foreground/25"
         />
         <div className="-mt-1 flex flex-wrap items-center gap-2">
           {projects.length > 0 && (

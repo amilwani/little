@@ -9,7 +9,7 @@ import { Mascot } from "./Mascot";
 import { Menu } from "./Menu";
 import { openPalette } from "./CommandPalette";
 import { NAV, isActive, withProject } from "./AppHeader";
-import type { Project } from "@/lib/drive";
+import type { NoteMeta, Project } from "@/lib/drive";
 import { cache } from "@/lib/local";
 import { useAccessToken } from "@/lib/useAccessToken";
 
@@ -60,7 +60,7 @@ export function Sidebar() {
               key={n.href}
               href={n.href}
               aria-current={on ? "page" : undefined}
-              className={`${row} ${on ? "bg-foreground/[0.06] font-medium text-foreground" : "text-foreground/75"}`}
+              className={`${row} ${on ? "bg-background font-medium text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}
             >
               <Icon name={n.icon} size={17} className={on ? "" : "text-muted"} />
               {n.label}
@@ -69,8 +69,11 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-6 flex min-h-0 flex-1 flex-col px-2">
-        <div className="group flex h-7 items-center justify-between px-2">
+      <div className="no-scrollbar mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto px-2">
+        <Suspense fallback={null}>
+          <NoteShortcuts />
+        </Suspense>
+        <div className="group mt-4 flex h-7 shrink-0 items-center justify-between px-2">
           <span className="text-xs font-medium text-muted">Projects</span>
           <button
             onClick={newProject}
@@ -80,11 +83,9 @@ export function Sidebar() {
             <Icon name="plus" size={15} />
           </button>
         </div>
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
-          <Suspense fallback={null}>
-            <ProjectList onNew={newProject} />
-          </Suspense>
-        </div>
+        <Suspense fallback={null}>
+          <ProjectList onNew={newProject} />
+        </Suspense>
       </div>
 
       <div className="flex flex-col gap-px border-t border-border px-2 py-2">
@@ -94,12 +95,74 @@ export function Sidebar() {
         <Link
           href="/settings"
           aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-          className={`${row} ${pathname.startsWith("/settings") ? "bg-foreground/[0.06] font-medium" : "text-foreground/75"}`}
+          className={`${row} ${pathname.startsWith("/settings") ? "bg-background font-medium shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}
         >
           <Icon name="settings" size={17} className="text-muted" /> Settings
         </Link>
       </div>
     </aside>
+  );
+}
+
+/** Pinned notes, then the notes you opened last. */
+function NoteShortcuts() {
+  const [notes, setNotes] = useState<NoteMeta[]>([]);
+  const [recent, setRecent] = useState<string[]>([]);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    const load = () => cache.getIndex().then((i) => setNotes(i?.notes ?? []));
+    const loadRecent = () => {
+      try {
+        setRecent(JSON.parse(localStorage.getItem("little:recent") ?? "[]"));
+      } catch {
+        setRecent([]);
+      }
+    };
+    load();
+    loadRecent();
+    window.addEventListener("little:index", load);
+    window.addEventListener("little:recent", loadRecent);
+    return () => {
+      window.removeEventListener("little:index", load);
+      window.removeEventListener("little:recent", loadRecent);
+    };
+  }, []);
+
+  const byId = new Map(notes.map((n) => [n.id, n]));
+  const pinned = notes.filter((n) => n.pinned).slice(0, 5);
+  const recents = recent
+    .map((id) => byId.get(id))
+    .filter((n): n is NoteMeta => !!n && !n.pinned)
+    .slice(0, 5);
+
+  const item = (n: NoteMeta) => {
+    const on = pathname === `/notes/${n.id}`;
+    return (
+      <li key={n.id}>
+        <Link href={`/notes/${n.id}`} className={`${row} ${on ? "bg-background font-medium shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}>
+          <Icon name={n.kind === "written" ? "doc" : "mic"} size={15} className="text-muted" />
+          <span className="min-w-0 flex-1 truncate">{n.title}</span>
+        </Link>
+      </li>
+    );
+  };
+
+  return (
+    <>
+      {pinned.length > 0 && (
+        <>
+          <div className="flex h-7 shrink-0 items-center px-2 text-xs font-medium text-muted">Pinned</div>
+          <ul className="flex flex-col gap-px">{pinned.map(item)}</ul>
+        </>
+      )}
+      {recents.length > 0 && (
+        <>
+          <div className={`flex h-7 shrink-0 items-center px-2 text-xs font-medium text-muted ${pinned.length ? "mt-4" : ""}`}>Recent</div>
+          <ul className="flex flex-col gap-px">{recents.map(item)}</ul>
+        </>
+      )}
+    </>
   );
 }
 
@@ -138,7 +201,7 @@ function ProjectRow({ project, active }: { project: Project; active: boolean }) 
     <li ref={setNodeRef}>
       <Link
         href={`/notes?p=${project.id}`}
-        className={`${row} ${active ? "bg-foreground/[0.06] font-medium" : "text-foreground/75"} ${isOver ? "bg-accent-soft ring-1 ring-accent" : ""}`}
+        className={`${row} ${active ? "bg-background font-medium shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"} ${isOver ? "bg-accent-soft ring-1 ring-accent" : ""}`}
       >
         <span className="flex w-[17px] justify-center">
           <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: project.color }} />

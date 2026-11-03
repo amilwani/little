@@ -13,7 +13,7 @@ const inlineHtml = (s: string) =>
     .replace(/\*([^*]+)\*/g, "<i>$1</i>");
 
 /** The small Markdown subset Little writes, as HTML for Google Docs. */
-export function markdownToHtml(md: string) {
+function markdownToHtml(md: string) {
   const out: string[] = [];
   let list: "ul" | "ol" | null = null;
   const close = () => {
@@ -55,7 +55,7 @@ export function markdownToHtml(md: string) {
 }
 
 /** Markdown as readable plain text for chat apps and email. */
-export function markdownToText(md: string) {
+function markdownToText(md: string) {
   return md
     .replace(/^#{1,3}\s+(.*)$/gm, (_, t: string) => t.toUpperCase())
     .replace(/^(\s*)[-*]\s+\[ \]\s+/gm, "$1☐ ")

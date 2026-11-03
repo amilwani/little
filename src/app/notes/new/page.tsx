@@ -1,6 +1,8 @@
 "use client";
 
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 import { NoteModeSwitch } from "@/components/NoteModeSwitch";
+import { defaultNoteTitle } from "@/lib/dates";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
@@ -19,10 +21,6 @@ import { cache as localCache } from "@/lib/local";
 import { TEMPLATES, getTemplate, type TemplateId } from "@/lib/templates";
 import type { Project } from "@/lib/drive";
 import { guessTemplate, recallEvent } from "@/lib/calendar";
-
-function defaultTitle() {
-  return `Note ${new Date().toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}`;
-}
 
 export default function NewRecordingPage() {
   return (
@@ -84,13 +82,11 @@ function NewRecording() {
     setTemplate(id);
   };
 
-  // Warn before closing the tab mid-recording.
-  useEffect(() => {
-    if (recorder.state !== "recording" && recorder.state !== "paused") return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [recorder.state]);
+  // Mid-recording, a tapped link offers to stop and save first instead of dropping the audio.
+  useLeaveGuard(recorder.state === "recording" || recorder.state === "paused", () => {
+    if (confirm("Stop and save this recording before leaving?")) stopRef.current();
+    return false;
+  });
 
   const start = async () => {
     idRef.current = crypto.randomUUID();
@@ -113,6 +109,8 @@ function NewRecording() {
     live.stop();
     recorder.stop();
   };
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
 
   const changeLang = (l: Lang) => {
     setLang(l);
@@ -125,7 +123,7 @@ function NewRecording() {
     savedRef.current = true;
     const note: PendingNote = {
       id: idRef.current,
-      title: title.trim() || defaultTitle(),
+      title: title.trim() || defaultNoteTitle(),
       createdAt: createdAtRef.current,
       durationSec: Math.round(recorder.elapsedMs / 1000),
       language: lang,
@@ -169,7 +167,7 @@ function NewRecording() {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Untitled meeting"
           aria-label="Title"
-          className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none placeholder:text-foreground/25"
+          className="w-full bg-transparent font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em] outline-none placeholder:text-foreground/25"
         />
 
         <div className="-mt-2 flex flex-wrap items-center gap-2">

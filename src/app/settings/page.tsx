@@ -67,7 +67,7 @@ export default function SettingsPage() {
     <>
       <AppHeader back="/" title="Settings" />
       <main className="pb-nav mx-auto max-w-2xl space-y-8 px-4 pt-6 md:pt-10">
-        <h1 className="hidden text-[26px] font-semibold leading-tight tracking-tight md:block">Settings</h1>
+        <h1 className="hidden font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em] md:block">Settings</h1>
         {saved && (
           <p role="status" className="animate-pop fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background shadow-lg">
             {saved}
@@ -191,9 +191,21 @@ export default function SettingsPage() {
               </span>
               <button
                 onClick={async () => {
+                  const waiting = (await cache.listPending()).length;
+                  if (
+                    waiting &&
+                    !confirm(
+                      `${waiting} note${waiting === 1 ? " hasn't" : "s haven't"} uploaded to Drive yet. Signing out deletes ${waiting === 1 ? "it" : "them"} from this device. Sign out anyway?`,
+                    )
+                  )
+                    return;
+                  // Clear everything Little keeps on this device, so the next person can't see it.
                   await cache.clear();
                   try {
-                    localStorage.removeItem("little:settings");
+                    for (const store of [localStorage, sessionStorage])
+                      Object.keys(store)
+                        .filter((k) => k.startsWith("little"))
+                        .forEach((k) => store.removeItem(k));
                   } catch {}
                   signOut({ redirectTo: "/" });
                 }}

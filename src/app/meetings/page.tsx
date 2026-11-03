@@ -115,7 +115,7 @@ export default function MeetingsPage() {
           <>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h1 className="text-[26px] font-semibold leading-tight tracking-tight">Meetings</h1>
+                <h1 className="font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">Meetings</h1>
                 <p className="mt-0.5 text-sm text-muted">From your Google Calendar</p>
               </div>
               <div className="flex shrink-0 rounded-lg bg-subtle p-0.5 text-sm">

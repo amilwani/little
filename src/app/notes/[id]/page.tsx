@@ -1,5 +1,6 @@
 "use client";
 
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -54,6 +55,17 @@ import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
 
 type Tab = "ai" | "notes" | "transcript";
+
+/** Keeps the last notes you opened, for Recent in the sidebar. */
+function rememberRecent(id: string) {
+  try {
+    const list: string[] = JSON.parse(localStorage.getItem("little:recent") ?? "[]");
+    localStorage.setItem("little:recent", JSON.stringify([id, ...list.filter((x) => x !== id)].slice(0, 8)));
+    window.dispatchEvent(new Event("little:recent"));
+  } catch {
+    /* storage blocked */
+  }
+}
 
 export default function NotePageWrapper() {
   return (
@@ -114,6 +126,7 @@ function NotePage() {
         }
         setMeta(found);
         setTitle(found.title);
+        rememberRecent(found.id);
         if (found.kind === "written") setTab("notes");
         cache.getIndex().then((i) => setProjects(i?.projects ?? []));
         loadIndex(token)
@@ -234,10 +247,12 @@ function NotePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, meta, transcript, settingsLoaded, aiNotes]);
 
-  const dirty = title !== savedNotes.title || notes !== savedNotes.notes;
+  const dirty = (title.trim() || savedNotes.title) !== savedNotes.title || notes !== savedNotes.notes;
+  const savingRef = useRef(false);
 
   const save = async () => {
-    if (!token || !meta) return;
+    if (!token || !meta || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const updated = await updateNote(token, meta, {
@@ -252,6 +267,7 @@ function NotePage() {
         "Couldn't save to Google Drive. Check your connection and try again.",
       );
     }
+    savingRef.current = false;
     setSaving(false);
   };
 
@@ -349,7 +365,7 @@ function NotePage() {
     if (!confirm("Move this note to your Google Drive trash?")) return;
     try {
       await deleteNote(token, meta);
-      router.replace("/");
+      router.replace(meta.projectId ? `/notes?p=${meta.projectId}` : "/notes");
     } catch {
       setMessage("Couldn't delete this note.");
     }
@@ -453,6 +469,17 @@ function NotePage() {
     return () => clearTimeout(t);
   }, [message, meta]);
 
+  // Autosave a moment after typing stops, and warn before leaving with unsaved text.
+  useEffect(() => {
+    if (!dirty || saving) return;
+    const t = setTimeout(() => saveRef.current(), 2500);
+    return () => clearTimeout(t);
+  }, [dirty, saving, title, notes]);
+  useLeaveGuard(dirty, () => {
+    saveRef.current();
+    return true;
+  });
+
   // Ctrl/⌘ S saves.
   const saveRef = useRef(save);
   saveRef.current = save;
@@ -548,7 +575,7 @@ function NotePage() {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-transparent text-[28px] font-semibold leading-tight tracking-tight outline-none"
+              className="w-full bg-transparent font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em] outline-none"
               aria-label="Title"
             />
             <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">

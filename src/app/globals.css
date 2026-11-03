@@ -36,6 +36,7 @@
   --color-accent-soft: var(--accent-soft);
   --color-subtle: var(--subtle);
   --color-sidebar: var(--sidebar);
+  --font-display: var(--font-serif), "Iowan Old Style", Georgia, serif;
 }
 
 html,
@@ -43,7 +44,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family:
-    -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Noto Sans Devanagari", system-ui, sans-serif;
+    var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans Devanagari", system-ui, sans-serif;
   font-feature-settings: "cv11", "ss01";
   letter-spacing: -0.006em;
   -webkit-tap-highlight-color: transparent;
@@ -121,4 +122,68 @@ textarea:focus-visible {
   body:has(#sidebar) {
     padding-left: 15rem;
   }
+}
+
+/* ---- Motion ------------------------------------------------------------- */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+/* Every page eases in; sections can stagger with style={{ animationDelay }}. */
+main { animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.rise { animation: rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.stagger > * { animation: rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--subtle) 25%, color-mix(in srgb, var(--subtle) 35%, var(--background)) 50%, var(--subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes ring-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.pulse-dot { animation: ring-pulse 2.2s ease-out infinite; }
+
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.check-draw path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: draw 0.35s 0.05s ease-out forwards; }
+
+@keyframes burst {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.4); }
+}
+.burst > i {
+  position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 2px;
+  animation: burst 0.7s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+.toast { animation: toast-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+
+/* A soft wash of colour behind Home that follows the time of day. */
+.aurora { position: absolute; inset: 0 0 auto 0; height: 26rem; z-index: 0; pointer-events: none; opacity: 1;
+  -webkit-mask-image: linear-gradient(to bottom, black 30%, transparent); mask-image: linear-gradient(to bottom, black 30%, transparent); }
+.aurora-morning { background: radial-gradient(40% 70% at 20% 10%, #ffcfa6 0%, transparent 70%), radial-gradient(35% 60% at 70% 0%, #ffc9d6 0%, transparent 70%), radial-gradient(30% 60% at 95% 30%, #fff0b8 0%, transparent 70%); }
+.aurora-afternoon { background: radial-gradient(40% 70% at 15% 10%, #bcdcff 0%, transparent 70%), radial-gradient(35% 60% at 65% 0%, #c4f0da 0%, transparent 70%), radial-gradient(30% 60% at 95% 30%, #ffe7c7 0%, transparent 70%); }
+.aurora-evening { background: radial-gradient(40% 70% at 20% 10%, #d8c8ff 0%, transparent 70%), radial-gradient(35% 60% at 70% 0%, #ffd3e6 0%, transparent 70%), radial-gradient(30% 60% at 95% 30%, #c9d7ff 0%, transparent 70%); }
+@media (prefers-color-scheme: dark) {
+  .aurora { opacity: 0.18; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }

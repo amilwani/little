@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { relTime } from "@/lib/dates";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { Icon } from "@/components/Icon";
@@ -21,14 +22,6 @@ export default function IdeasPage() {
       <Ideas />
     </Suspense>
   );
-}
-
-function when(iso: string) {
-  const d = new Date(iso);
-  const days = (Date.now() - d.getTime()) / 864e5;
-  if (days < 1 && d.getDate() === new Date().getDate()) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (days < 6) return d.toLocaleDateString(undefined, { weekday: "short" });
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function Ideas() {
@@ -143,7 +136,7 @@ function Ideas() {
       <main className="pb-nav mx-auto max-w-6xl px-4 pt-6 md:pt-10">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Ideas</h1>
+            <h1 className="font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em]">Ideas</h1>
             <p className="mt-0.5 text-sm text-muted">Your space to think out loud. Only you can see it.</p>
           </div>
         </div>
@@ -328,7 +321,7 @@ function IdeaCard({ idea, onOpen }: { idea: Idea; onOpen: () => void }) {
       )}
       <span className="mt-3 flex items-center gap-2 text-xs text-muted">
         {idea.pinned && <Icon name="pin" size={12} className="text-accent" />}
-        <span>{when(idea.createdAt)}</span>
+        <span>{relTime(idea.createdAt)}</span>
         {idea.riff && (
           <span className="flex items-center gap-1">
             <Icon name="sparkles" size={12} /> Riffed
