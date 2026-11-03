@@ -4,6 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { pendingCount } from "@/lib/slack";
 import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
 import { Menu } from "./Menu";
@@ -63,7 +64,8 @@ export function Sidebar() {
               className={`${row} ${on ? "bg-background font-medium text-foreground shadow-[0_1px_3px_rgba(0,0,0,0.07)] ring-1 ring-foreground/[0.05]" : "text-foreground/75"}`}
             >
               <Icon name={n.icon} size={17} className={on ? "" : "text-muted"} />
-              {n.label}
+              <span className="flex-1">{n.label}</span>
+              {n.href === "/inbox" && <InboxBadge />}
             </Link>
           );
         })}
@@ -214,4 +216,17 @@ function ProjectRow({ project, active }: { project: Project; active: boolean }) 
       </Link>
     </li>
   );
+}
+
+/** Count of Slack actionables still waiting, next to "Slack inbox". */
+function InboxBadge() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const update = () => setN(pendingCount());
+    update();
+    window.addEventListener("little:inbox", update);
+    return () => window.removeEventListener("little:inbox", update);
+  }, []);
+  if (!n) return null;
+  return <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-[18px] text-white">{n}</span>;
 }

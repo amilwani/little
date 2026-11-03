@@ -33,6 +33,10 @@ export function useSettings(token: string | null) {
 
   useEffect(() => {
     setSettings(readLocal());
+    // Another part of the page (say, the key setup card) saved new settings.
+    const sync = () => setSettings(readLocal());
+    window.addEventListener("little:settings", sync);
+    return () => window.removeEventListener("little:settings", sync);
   }, []);
 
   useEffect(() => {
@@ -57,6 +61,7 @@ export function useSettings(token: string | null) {
     async (next: Settings) => {
       setSettings(next);
       writeLocal(next);
+      window.dispatchEvent(new Event("little:settings"));
       if (token) await saveSettings(token, next);
     },
     [token],

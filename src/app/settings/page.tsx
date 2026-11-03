@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { Icon } from "@/components/Icon";
+import { GeminiKeySetup } from "@/components/GeminiKeySetup";
 import { Mascot } from "@/components/Mascot";
 import type { AiProvider, Settings } from "@/lib/drive";
 import { cache } from "@/lib/local";
@@ -39,6 +40,9 @@ export default function SettingsPage() {
   const { settings, update } = useSettings(token);
   const [draft, setDraft] = useState<Settings>(settings);
   const [saved, setSaved] = useState<string | null>(null);
+  const [showProviders, setShowProviders] = useState(false);
+  const [justAdded, setJustAdded] = useState(false);
+  const hasKey = Object.values(settings.apiKeys ?? {}).some(Boolean);
 
   useEffect(() => setDraft(settings), [settings]);
   useEffect(() => {
@@ -67,9 +71,14 @@ export default function SettingsPage() {
     <>
       <AppHeader back="/" title="Settings" />
       <main className="pb-nav mx-auto max-w-2xl space-y-8 px-4 pt-6 md:pt-10">
-        <h1 className="hidden font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em] md:block">Settings</h1>
+        <h1 className="hidden font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em] md:block">
+          Settings
+        </h1>
         {saved && (
-          <p role="status" className="animate-pop fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+          <p
+            role="status"
+            className="animate-pop fixed left-1/2 top-16 z-40 -translate-x-1/2 rounded-full bg-foreground px-4 py-2 text-sm text-background shadow-lg"
+          >
             {saved}
           </p>
         )}
@@ -80,7 +89,9 @@ export default function SettingsPage() {
             <label className={`${row} cursor-pointer`}>
               <span className="min-w-0">
                 <span className="block text-[15px] font-medium">Save audio recordings</span>
-                <span className="block text-[13px] text-muted">Keeps the audio in Drive next to the transcript and notes.</span>
+                <span className="block text-[13px] text-muted">
+                  Keeps the audio in Drive next to the transcript and notes.
+                </span>
               </span>
               <input
                 type="checkbox"
@@ -101,56 +112,86 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section>
+        <section id="ai" className="scroll-mt-20">
           <h2 className={label}>AI features</h2>
           <p className="mb-3 px-1 text-[13px] leading-relaxed text-muted">
-            Recording and notes are free and need no key. AI notes, Ask and dictation cleanup use your own API key, so you
-            pay your AI provider directly. Your key is stored only in your Google Drive and this browser.
+            Recording and notes are free and need no key. AI notes, Ask and dictation cleanup use your own API key, so
+            you pay your AI provider directly. Your key is stored only in your Google Drive and this browser.
           </p>
-          <div className={group}>
-            {PROVIDERS.map((p) => {
-              const on = draft.aiProvider === p.id;
-              return (
-                <div key={p.id} className="px-4 py-3.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="flex cursor-pointer items-center gap-2.5 text-[15px] font-medium">
+          {(!hasKey || justAdded) && (
+            <div className="mb-3">
+              <GeminiKeySetup onDone={() => setJustAdded(true)} />
+            </div>
+          )}
+          {!hasKey && !showProviders ? (
+            <button
+              onClick={() => setShowProviders(true)}
+              className="px-1 text-[13px] text-muted underline hover:text-foreground"
+            >
+              Use OpenAI or Claude instead
+            </button>
+          ) : (
+            <>
+              <div className={group}>
+                {PROVIDERS.map((p) => {
+                  // With no explicit pick, show the provider Little actually uses: the first one with a key.
+                  const inUse = draft.aiProvider ?? PROVIDERS.find((x) => draft.apiKeys[x.id])?.id;
+                  const on = inUse === p.id;
+                  return (
+                    <div key={p.id} className="px-4 py-3.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <label className="flex cursor-pointer items-center gap-2.5 text-[15px] font-medium">
+                          <input
+                            type="radio"
+                            name="provider"
+                            checked={on}
+                            onChange={() => setDraft((d) => ({ ...d, aiProvider: p.id }))}
+                            className="peer sr-only"
+                          />
+                          <span
+                            aria-hidden
+                            className={`flex h-[18px] w-[18px] items-center justify-center rounded-full border peer-focus-visible:ring-2 peer-focus-visible:ring-accent ${on ? "border-foreground bg-foreground" : "border-foreground/25"}`}
+                          >
+                            {on && <span className="h-1.5 w-1.5 rounded-full bg-background" />}
+                          </span>
+                          {p.name}
+                          {draft.apiKeys[p.id] && (
+                            <span className="rounded bg-subtle px-1.5 py-0.5 text-[11px] font-normal text-muted">
+                              Key added
+                            </span>
+                          )}
+                        </label>
+                        <a
+                          href={p.getKey}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1 text-[13px] text-muted hover:text-foreground"
+                        >
+                          Get a key <Icon name="chevronRight" size={13} />
+                        </a>
+                      </div>
+                      <p className="mt-1 pl-7 text-[13px] text-muted">{p.note}</p>
                       <input
-                        type="radio"
-                        name="provider"
-                        checked={on}
-                        onChange={() => setDraft((d) => ({ ...d, aiProvider: p.id }))}
-                        className="peer sr-only"
+                        type="password"
+                        autoComplete="off"
+                        placeholder="Paste your API key"
+                        aria-label={`${p.name} API key`}
+                        value={draft.apiKeys[p.id] ?? ""}
+                        onChange={(e) => setKey(p.id, e.target.value)}
+                        className="mt-2.5 ml-7 w-[calc(100%-1.75rem)] rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
                       />
-                      <span
-                        aria-hidden
-                        className={`flex h-[18px] w-[18px] items-center justify-center rounded-full border peer-focus-visible:ring-2 peer-focus-visible:ring-accent ${on ? "border-foreground bg-foreground" : "border-foreground/25"}`}
-                      >
-                        {on && <span className="h-1.5 w-1.5 rounded-full bg-background" />}
-                      </span>
-                      {p.name}
-                      {draft.apiKeys[p.id] && <span className="rounded bg-subtle px-1.5 py-0.5 text-[11px] font-normal text-muted">Key added</span>}
-                    </label>
-                    <a href={p.getKey} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[13px] text-muted hover:text-foreground">
-                      Get a key <Icon name="chevronRight" size={13} />
-                    </a>
-                  </div>
-                  <p className="mt-1 pl-7 text-[13px] text-muted">{p.note}</p>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    placeholder="Paste your API key"
-                    aria-label={`${p.name} API key`}
-                    value={draft.apiKeys[p.id] ?? ""}
-                    onChange={(e) => setKey(p.id, e.target.value)}
-                    className="mt-2.5 ml-7 w-[calc(100%-1.75rem)] rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm outline-none focus:border-foreground/30"
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <button onClick={() => save(draft)} className="mt-3 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-medium text-background active:scale-[0.99]">
-            Save AI settings
-          </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => save(draft)}
+                className="mt-3 w-full rounded-xl bg-foreground px-5 py-3 text-sm font-medium text-background active:scale-[0.99]"
+              >
+                Save AI settings
+              </button>
+            </>
+          )}
         </section>
 
         <section className="hidden md:block">
@@ -167,11 +208,14 @@ export default function SettingsPage() {
               ["I", "Ideas"],
               ["T", "To-dos"],
               ["M", "Meetings"],
+              ["B", "Slack inbox"],
               ["A", "Ask your notes"],
               ["⌘ S", "Save a note"],
             ].map(([k, what]) => (
               <div key={k} className="flex items-center gap-3 border-b border-border px-4 py-2.5 odd:border-r">
-                <kbd className="min-w-9 rounded border border-border bg-background px-1.5 py-0.5 text-center text-xs">{k}</kbd>
+                <kbd className="min-w-9 rounded border border-border bg-background px-1.5 py-0.5 text-center text-xs">
+                  {k}
+                </kbd>
                 <span className="text-muted">{what}</span>
               </div>
             ))}
@@ -200,6 +244,7 @@ export default function SettingsPage() {
                   )
                     return;
                   // Clear everything Little keeps on this device, so the next person can't see it.
+                  await fetch("/api/slack/disconnect", { method: "POST" }).catch(() => {});
                   await cache.clear();
                   try {
                     for (const store of [localStorage, sessionStorage])
@@ -216,7 +261,8 @@ export default function SettingsPage() {
             </div>
           </div>
           <p className="mt-2 px-1 text-xs text-muted">
-            Everything Little saves is in the &ldquo;Little&rdquo; folder of your Google Drive. Signing out clears this device&apos;s copy only.
+            Everything Little saves is in the &ldquo;Little&rdquo; folder of your Google Drive. Signing out clears this
+            device&apos;s copy only.
           </p>
         </section>
       </main>

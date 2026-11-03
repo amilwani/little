@@ -136,7 +136,7 @@ function Ideas() {
       <main className="pb-nav mx-auto max-w-6xl px-4 pt-6 md:pt-10">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <h1 className="font-display text-[38px] font-normal leading-[1.05] tracking-[-0.01em]">Ideas</h1>
+            <h1 className="font-display text-[36px] font-normal leading-[1.05] tracking-[-0.01em]">Ideas</h1>
             <p className="mt-0.5 text-sm text-muted">Your space to think out loud. Only you can see it.</p>
           </div>
         </div>
