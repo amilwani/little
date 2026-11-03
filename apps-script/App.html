@@ -1,0 +1,1509 @@
+<script>
+/* Little for Apps Script: the front end. Plain JavaScript, no build step.
+   Every call to the server goes through api(name, ...args), which wraps google.script.run. */
+(function () {
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Basics
+// ---------------------------------------------------------------------------
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const S = { ready: false, busy: {}, events: null, inbox: null, draftEvent: null };
+const STATUSES = [
+  { id: 'todo', name: 'To do', color: '#9b5de5' },
+  { id: 'doing', name: 'In progress', color: '#e9a23b' },
+  { id: 'review', name: 'In review', color: '#4d96ff' },
+  { id: 'done', name: 'Complete', color: '#2a9d8f' },
+];
+const PROJECT_COLORS = ['#f07167', '#f4a261', '#e9c46a', '#2a9d8f', '#4d96ff', '#9b5de5', '#ef476f', '#6c757d'];
+const IDEA_COLORS = ['plain', 'sun', 'peach', 'rose', 'lilac', 'sky', 'mint'];
+const SPARKS = [
+  "What's something you keep meaning to try?",
+  'What annoyed you this week that someone should fix?',
+  'If you had a free Saturday to build anything, what would it be?',
+  "What would make your team's week 10x easier?",
+  "What do you know that most people don't?",
+  'Which small habit would change the most if you started it?',
+  "What would you make if it didn't have to be good?",
+  'कौन सा काम आप हमेशा टालते हैं, और क्यों?',
+];
+
+function api(name) {
+  const args = Array.prototype.slice.call(arguments, 1);
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler((e) => reject(new Error(String((e && e.message) || e).replace(/^(Exception|Error|ScriptError):\s*/i, ''))))
+      [name].apply(null, args);
+  });
+}
+
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem('little:' + k)); } catch (e) { return null; } },
+  set(k, v) { try { if (v == null) localStorage.removeItem('little:' + k); else localStorage.setItem('little:' + k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
+};
+
+function toast(msg, err) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (err ? ' err' : '');
+  el.textContent = msg;
+  const root = $('#toast-root');
+  while (root.children.length >= 2) root.removeChild(root.firstChild); // at most a few at once
+  root.appendChild(el);
+  setTimeout(() => el.remove(), err ? 6000 : 3000);
+}
+
+/** Shows an error; "NEED_KEY" errors open the AI key setup instead. */
+function fail(e) {
+  const msg = (e && e.message) || String(e);
+  if (/^NEED_KEY:/.test(msg)) return openKeyModal(msg.replace(/^NEED_KEY:\s*/, ''));
+  toast(msg, true);
+}
+
+async function busy(key, fn) {
+  if (S.busy[key]) return;
+  S.busy[key] = true;
+  render();
+  try { return await fn(); } catch (e) { fail(e); } finally { delete S.busy[key]; render(); }
+}
+
+function copyText(text) {
+  const done = () => toast('Copied');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(done).catch(() => legacyCopy(text, done));
+  }
+  legacyCopy(text, done);
+}
+function legacyCopy(text, done) {
+  const t = document.createElement('textarea');
+  t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+  document.body.appendChild(t); t.select();
+  try { document.execCommand('copy'); done(); } catch (e) { toast("Couldn't copy. Select the text and copy it yourself.", true); }
+  t.remove();
+}
+
+function uid() { return (crypto.randomUUID && crypto.randomUUID()) || 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2); }
+
+// ---- Dates ----------------------------------------------------------------
+function localDay(d) { d = new Date(d); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function today() { return localDay(new Date()); }
+function addDays(day, n) { const d = new Date(day + 'T12:00:00'); d.setDate(d.getDate() + n); return localDay(d); }
+function fmtDur(sec) { sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0'); }
+function fmtTime(d) { return new Date(d).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function relDay(d) {
+  const day = localDay(d), t = today();
+  if (day === t) return 'Today';
+  if (day === addDays(t, -1)) return 'Yesterday';
+  if (day === addDays(t, 1)) return 'Tomorrow';
+  const dt = new Date(d);
+  return dt.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: dt.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+}
+function fmtDue(due) {
+  if (!due) return '';
+  const t = today();
+  if (due < t) return 'Overdue · ' + relDay(due + 'T12:00:00');
+  return relDay(due + 'T12:00:00');
+}
+function greeting() { const h = new Date().getHours(); return h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
+
+// ---- Icons (inline SVG, 24px grid) -----------------------------------------
+const ICONS = {
+  home: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  notes: 'M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM14 3v5h5M9 13h6M9 17h6',
+  mic: 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3',
+  pen: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+  wand: 'M15 4V2M15 10V8M12 5h-2M20 5h-2M17.5 2.5 16 4M4 20 14 10M16 6l2 2',
+  check: 'M5 12.5 10 17 19 7',
+  checks: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+  calendar: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 10h16M9 2v4M15 2v4',
+  inbox: 'M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z',
+  bulb: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
+  chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
+  gear: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+  plus: 'M12 5v14M5 12h14',
+  x: 'M6 6l12 12M18 6 6 18',
+  play: 'M7 4v16l13-8z',
+  pause: 'M8 5v14M16 5v14',
+  stop: 'M6 6h12v12H6z',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+  share: 'M12 3v12M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5',
+  pin: 'M9 4h6l-1 6 4 4H6l4-4zM12 14v7',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  back: 'M15 5l-7 7 7 7',
+  sparkles: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z',
+  upload: 'M12 16V4M7 9l5-5 5 5M4 20h16',
+  globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18',
+  copy: 'M9 9h10v10H9zM5 15V5h10',
+  mail: 'M4 6h16v12H4zM4 7l8 6 8-6',
+  doc: 'M7 3h7l5 5v13H7zM14 3v5h5M9 13h6M9 17h4',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  users: 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8',
+  refresh: 'M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4',
+  slack: 'M14.5 3a1.5 1.5 0 0 0 0 3H16V4.5A1.5 1.5 0 0 0 14.5 3zM9.5 21a1.5 1.5 0 0 0 0-3H8v1.5A1.5 1.5 0 0 0 9.5 21zM3 9.5a1.5 1.5 0 0 0 3 0V8H4.5A1.5 1.5 0 0 0 3 9.5zM21 14.5a1.5 1.5 0 0 0-3 0V16h1.5a1.5 1.5 0 0 0 1.5-1.5zM8 3.5v6M16 14.5v6M3.5 16h6M14.5 8h6',
+  menu: 'M4 6h16M4 12h16M4 18h16',
+  whatsapp: 'M3 21l1.6-4.8A8.5 8.5 0 1 1 8 19.6zM9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 1a5 5 0 0 1-3-3l1-1-1-2z',
+};
+function icon(name, size, cls) {
+  size = size || 18;
+  return '<svg class="' + (cls || '') + '" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + ICONS[name] + '"/></svg>';
+}
+function spin() { return '<span class="spinner" aria-label="Working"></span>'; }
+
+// ---- Markdown (the small subset Little writes) ------------------------------
+function inl(text, opts) {
+  let s = esc(text);
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  if (opts && opts.cite) s = s.replace(/\[(\d{1,2})\]/g, (m, n) => opts.cite[n] ? '<a class="cite" href="#/note/' + esc(opts.cite[n].id) + (opts.cite[n].projectId ? '?p=' + esc(opts.cite[n].projectId) : '') + '">' + n + '</a>' : m);
+  return s;
+}
+function md(src, opts) {
+  opts = opts || {};
+  const out = [];
+  let list = null, task = 0;
+  const close = () => { if (list) out.push('</' + list + '>'); list = null; };
+  const open = (t) => { if (list !== t) { close(); out.push('<' + t + '>'); list = t; } };
+  String(src || '').replace(/\r/g, '').split('\n').forEach((raw) => {
+    const line = raw.replace(/\s+$/, '');
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { close(); const l = Math.min(m[1].length + 1, 4); out.push('<h' + l + '>' + inl(m[2], opts) + '</h' + l + '>'); }
+    else if ((m = line.match(/^\s*[-*]\s+\[( |x|X)\]\s+(.*)$/))) {
+      open('ul');
+      const i = task++, done = m[1] !== ' ';
+      const added = opts.added && opts.added(i);
+      out.push('<li class="task' + (done ? ' done' : '') + '"><input type="checkbox" data-task="' + i + '"' + (done ? ' checked' : '') + (opts.tasks ? '' : ' disabled') + '><span>' + inl(m[2], opts) + '</span>' +
+        (opts.todoBtn ? (added ? '<span class="chip">' + icon('check', 12) + ' On to-dos</span>' : '<button class="btn sm" data-act="actionTodo" data-i="' + i + '">+ To-do</button>') : '') + '</li>');
+    }
+    else if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) { open('ul'); out.push('<li>' + inl(m[1], opts) + '</li>'); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { open('ol'); out.push('<li>' + inl(m[1], opts) + '</li>'); }
+    else if (!line.trim()) close();
+    else { close(); out.push('<p>' + inl(line, opts) + '</p>'); }
+  });
+  close();
+  return '<div class="md">' + out.join('') + '</div>';
+}
+
+// ---------------------------------------------------------------------------
+// Routing
+// ---------------------------------------------------------------------------
+function route() {
+  const h = location.hash.replace(/^#/, '') || '/home';
+  const [path, query] = h.split('?');
+  const params = {};
+  (query || '').split('&').filter(Boolean).forEach((kv) => { const [k, v] = kv.split('='); params[decodeURIComponent(k)] = decodeURIComponent(v || ''); });
+  const parts = path.split('/').filter(Boolean);
+  return { name: parts[0] || 'home', id: parts[1], params: params };
+}
+function go(path) { if (location.hash === '#' + path) render(); else location.hash = path; }
+window.addEventListener('hashchange', () => { leaveView(); render(); window.scrollTo(0, 0); });
+
+let current = null;
+function leaveView() { if (current && current.leave) current.leave(); current = null; }
+
+// Guard links while recording or with unsaved typing.
+window.addEventListener('beforeunload', (e) => { if (REC.state !== 'idle') { e.preventDefault(); e.returnValue = ''; } });
+
+// ---------------------------------------------------------------------------
+// Shell
+// ---------------------------------------------------------------------------
+const NAV = [
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'notes', label: 'Notes', icon: 'notes' },
+  { id: 'record', label: 'Record', icon: 'mic' },
+  { id: 'dictate', label: 'Dictate', icon: 'wand' },
+  { id: 'meetings', label: 'Meetings', icon: 'calendar' },
+  { id: 'todos', label: 'To-dos', icon: 'checks' },
+  { id: 'inbox', label: 'Inbox', icon: 'inbox' },
+  { id: 'ideas', label: 'Ideas', icon: 'bulb' },
+  { id: 'ask', label: 'Ask your notes', icon: 'chat' },
+];
+
+function shell(inner, r, wide) {
+  const active = r.name === 'note' || r.name === 'write' ? 'notes' : r.name;
+  const pending = S.inboxCount || 0;
+  const side = '<aside class="sidebar">' +
+    '<div class="brand"><span class="logo">L</span>Little<button class="btn ghost sm" style="margin-left:auto" data-act="palette" title="Search (Ctrl K)">' + icon('search', 16) + '</button></div>' +
+    NAV.map((n) => '<a class="nav-item' + (active === n.id ? ' active' : '') + '" href="#/' + n.id + '">' + icon(n.icon, 17) + n.label +
+      (n.id === 'inbox' && pending ? '<span class="badge">' + pending + '</span>' : '') + '</a>').join('') +
+    '<div class="nav-label"><span>Projects</span><button class="btn ghost sm icon" data-act="newProject" title="New project">' + icon('plus', 14) + '</button></div>' +
+    (S.projects.length ? S.projects.map((p) => '<a class="nav-item' + (r.name === 'project' && r.id === p.id ? ' active' : '') + '" href="#/project/' + esc(p.id) + '"><span class="dot" style="background:' + esc(p.color) + '"></span><span class="ellipsis">' + esc(p.name) + '</span>' + (p.shared ? '<span class="muted" style="margin-left:auto">' + icon('users', 14) + '</span>' : '') + '</a>').join('')
+      : '<p class="tiny muted" style="padding:0 10px">Group notes and team to-dos.</p>') +
+    '<div style="margin-top:auto"></div>' +
+    '<a class="nav-item' + (active === 'settings' ? ' active' : '') + '" href="#/settings">' + icon('gear', 17) + 'Settings</a>' +
+    '</aside>';
+  const top = '<header class="topbar"><span class="logo">L</span><b>Little</b><span class="grow"></span>' +
+    '<button class="btn ghost icon" data-act="palette" aria-label="Search">' + icon('search') + '</button>' +
+    '<a class="btn ghost icon" href="#/settings" aria-label="Settings">' + icon('gear') + '</a></header>';
+  const tabs = '<nav class="tabbar">' +
+    tab('home', 'Home', 'home', active) + tab('notes', 'Notes', 'notes', active) +
+    '<a class="tab-rec" href="#/record" aria-label="Record">' + icon('mic', 24) + '</a>' +
+    tab('todos', 'To-dos', 'checks', active) +
+    '<button class="tab' + (['ideas', 'inbox', 'ask', 'dictate', 'meetings', 'project'].indexOf(active) >= 0 ? ' active' : '') + '" data-act="moreMenu">' + icon('menu', 20) + 'More' + (pending ? ' <span class="badge">' + pending + '</span>' : '') + '</button>' +
+    '</nav>';
+  return '<div class="shell">' + side + '<div class="main">' + top + '<main class="page' + (wide ? ' wide' : '') + '">' + inner + '</main></div>' + tabs + '</div>';
+}
+function tab(id, label, ic, active) { return '<a class="tab' + (active === id ? ' active' : '') + '" href="#/' + id + '">' + icon(ic, 20) + label + '</a>'; }
+
+// ---------------------------------------------------------------------------
+// Render loop
+// ---------------------------------------------------------------------------
+const VIEWS = {};
+function render() {
+  if (!S.ready) return;
+  const r = route();
+  const view = VIEWS[r.name] || VIEWS.home;
+  // Keep focus and caret across re-renders.
+  const ae = document.activeElement;
+  const focusId = ae && ae.id;
+  const sel = focusId && 'selectionStart' in ae ? [ae.selectionStart, ae.selectionEnd] : null;
+  const out = view.html(r);
+  $('#app').innerHTML = shell(out, r, view.wide);
+  if (view.mount) view.mount(r);
+  current = view;
+  if (focusId) {
+    const el = document.getElementById(focusId);
+    if (el) { el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* not a text field */ } }
+  }
+}
+
+// One click handler for the whole app: elements with data-act="name" call ACT[name].
+const ACT = {};
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  // Apps Script runs the page in an iframe: keep in-app links inside it.
+  const a = e.target.closest('a[href^="#"]');
+  if (a && !el && !e.metaKey && !e.ctrlKey) { e.preventDefault(); location.hash = a.getAttribute('href').slice(1); return; }
+  if (!el) return;
+  const fn = ACT[el.dataset.act];
+  if (fn) { e.preventDefault(); fn(el, e); }
+});
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+  if (e.key === 'Escape') closeModal();
+});
+
+// ---------------------------------------------------------------------------
+// Modals
+// ---------------------------------------------------------------------------
+function openModal(html, onMount) {
+  $('#modal-root').innerHTML = '<div class="backdrop" data-close="1"><div class="modal" role="dialog" aria-modal="true">' + html + '</div></div>';
+  const bd = $('#modal-root .backdrop');
+  bd.addEventListener('click', (e) => { if (e.target === bd) closeModal(); });
+  if (onMount) onMount($('#modal-root .modal'));
+}
+function closeModal() { $('#modal-root').innerHTML = ''; }
+ACT.closeModal = closeModal;
+
+function promptModal(title, label, value, cb, okText) {
+  openModal('<h3 class="h2">' + esc(title) + '</h3><form class="mt" id="pm"><label class="small muted">' + esc(label) + '</label>' +
+    '<input class="input mt" id="pm-input" value="' + esc(value || '') + '" autocomplete="off"><div class="row mt" style="justify-content:flex-end">' +
+    '<button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary">' + esc(okText || 'Save') + '</button></div></form>', (m) => {
+    const inp = $('#pm-input', m); inp.focus(); inp.select();
+    $('#pm', m).addEventListener('submit', (e) => { e.preventDefault(); const v = inp.value.trim(); if (v) { closeModal(); cb(v); } });
+  });
+}
+function confirmModal(title, body, okText, cb) {
+  openModal('<h3 class="h2">' + esc(title) + '</h3><p class="muted">' + esc(body) + '</p><div class="row mt" style="justify-content:flex-end">' +
+    '<button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn accent" id="cm-ok">' + esc(okText) + '</button></div>', (m) => {
+    $('#cm-ok', m).addEventListener('click', () => { closeModal(); cb(); });
+  });
+}
+
+ACT.moreMenu = () => {
+  const links = [['meetings', 'Meetings', 'calendar'], ['dictate', 'Dictate', 'wand'], ['inbox', 'Slack inbox', 'inbox'], ['ideas', 'Ideas', 'bulb'], ['ask', 'Ask your notes', 'chat'], ['settings', 'Settings', 'gear']];
+  openModal('<div class="list">' + links.map((l) => '<a class="item" href="#/' + l[0] + '" data-act="navClose" data-to="' + l[0] + '">' + icon(l[2]) + '<span class="grow">' + l[1] + '</span>' + (l[0] === 'inbox' && S.inboxCount ? '<span class="badge">' + S.inboxCount + '</span>' : '') + '</a>').join('') + '</div>' +
+    '<div class="nav-label"><span>Projects</span><button class="btn sm" data-act="newProject">+ New</button></div><div class="list">' +
+    (S.projects.map((p) => '<a class="item" href="#/project/' + esc(p.id) + '" data-act="navClose" data-to="project/' + esc(p.id) + '"><span class="dot" style="background:' + esc(p.color) + '"></span>' + esc(p.name) + '</a>').join('') || '<div class="item muted small">No projects yet</div>') + '</div>');
+};
+ACT.navClose = (el) => { closeModal(); go('/' + el.dataset.to); };
+
+// ---- Command palette (Ctrl/Cmd K) ---------------------------------------------
+function openPalette() {
+  const actions = [
+    { label: 'Record a meeting', href: '#/record', ic: 'mic' }, { label: 'Write a note', href: '#/write', ic: 'pen' },
+    { label: 'Dictate', href: '#/dictate', ic: 'wand' }, { label: 'To-dos', href: '#/todos', ic: 'checks' },
+    { label: 'Meetings', href: '#/meetings', ic: 'calendar' }, { label: 'Ask your notes', href: '#/ask', ic: 'chat' },
+    { label: 'Ideas', href: '#/ideas', ic: 'bulb' }, { label: 'Slack inbox', href: '#/inbox', ic: 'inbox' }, { label: 'Settings', href: '#/settings', ic: 'gear' },
+  ];
+  openModal('<div class="palette"><input class="input" id="pal" placeholder="Search notes, to-dos, or jump to…" autocomplete="off"><div id="pal-list" class="mt" style="max-height:55vh;overflow:auto"></div>' +
+    '<p class="tiny muted mt">Enter to open · ' + '<span class="kbd">Esc</span> to close</p></div>', (m) => {
+    const inp = $('#pal', m), list = $('#pal-list', m);
+    let sel = 0, rows = [];
+    const draw = () => {
+      const q = inp.value.trim().toLowerCase();
+      const hit = (s) => String(s || '').toLowerCase().indexOf(q) >= 0;
+      rows = [];
+      actions.filter((a) => !q || hit(a.label)).forEach((a) => rows.push({ html: icon(a.ic) + '<span class="grow">' + esc(a.label) + '</span>', href: a.href }));
+      S.notes.filter((n) => !q || hit(n.title) || (n.tags || []).some(hit) || (n.attendees || []).some(hit)).slice(0, q ? 12 : 5)
+        .forEach((n) => rows.push({ html: '<span class="note-icon">' + noteEmoji(n) + '</span><span class="grow ellipsis">' + esc(n.title) + '</span><span class="tiny muted">' + relDay(n.createdAt) + '</span>', href: noteHref(n) }));
+      if (q) S.todos.filter((t) => hit(t.title)).slice(0, 6).forEach((t) => rows.push({ html: icon('checks') + '<span class="grow ellipsis">' + esc(t.title) + '</span><span class="tiny muted">To-do</span>', href: '#/todos' }));
+      if (q) rows.push({ html: icon('search') + '<span class="grow">Search inside all notes for "' + esc(inp.value.trim()) + '"</span>', href: '#/notes?q=' + encodeURIComponent(inp.value.trim()) });
+      sel = Math.min(sel, Math.max(0, rows.length - 1));
+      list.innerHTML = rows.map((r, i) => '<a class="item' + (i === sel ? ' sel' : '') + '" href="' + r.href + '" data-act="closeModal">' + r.html + '</a>').join('') || '<p class="muted small">Nothing found.</p>';
+    };
+    inp.addEventListener('input', () => { sel = 0; draw(); });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { sel = Math.min(sel + 1, rows.length - 1); draw(); e.preventDefault(); }
+      if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); draw(); e.preventDefault(); }
+      if (e.key === 'Enter' && rows[sel]) { closeModal(); location.hash = rows[sel].href.slice(1); }
+    });
+    list.addEventListener('click', (e) => { const a = e.target.closest('a'); if (a) { e.preventDefault(); closeModal(); location.hash = a.getAttribute('href').slice(1); } });
+    draw(); inp.focus();
+  });
+}
+ACT.palette = openPalette;
+
+// ---------------------------------------------------------------------------
+// Shared bits
+// ---------------------------------------------------------------------------
+function hasAi() { return !!(S.keys.gemini || S.keys.openai || S.keys.anthropic); }
+function canTranscribe() { return !!(S.keys.gemini || S.keys.openai); }
+function providerName() {
+  const p = S.settings.aiProvider || ['gemini', 'openai', 'anthropic'].filter((x) => S.keys[x])[0];
+  return { gemini: 'Gemini', openai: 'OpenAI', anthropic: 'Claude' }[p] || '';
+}
+function project(id) { return S.projects.filter((p) => p.id === id)[0]; }
+function template(id) { return S.templates.filter((t) => t.id === id)[0] || S.templates[0]; }
+function lang(code) { return S.languages.filter((l) => l.code === code)[0] || S.languages[0]; }
+function noteHref(n) { return '#/note/' + encodeURIComponent(n.id) + (n.projectId ? '?p=' + encodeURIComponent(n.projectId) : ''); }
+function noteEmoji(n) { return n.kind === 'written' ? '✍️' : template(n.template).emoji; }
+function upsertLocal(list, item, key) { key = key || 'id'; const i = list.findIndex((x) => x[key] === item[key]); if (i >= 0) list[i] = item; else list.unshift(item); }
+
+function noteRow(n, opts) {
+  opts = opts || {};
+  const p = project(n.projectId);
+  const done = (n.actions || []).filter((a) => a.done).length, total = (n.actions || []).length;
+  return '<a class="item" href="' + noteHref(n) + '"' + (opts.select ? ' data-act="toggleSelect" data-id="' + esc(n.id) + '"' : '') + '>' +
+    (opts.select ? '<input type="checkbox" tabindex="-1"' + (S.selected && S.selected[n.id] ? ' checked' : '') + '>' : '') +
+    '<span class="note-icon">' + noteEmoji(n) + '</span><span class="grow"><span class="row"><b class="ellipsis" style="font-weight:500">' + esc(n.title) + '</b>' + (n.pinned ? '<span class="muted">' + icon('pin', 13) + '</span>' : '') + '</span>' +
+    '<span class="sub row wrap">' + relDay(n.createdAt) + ' · ' + fmtTime(n.createdAt) + (n.kind === 'written' ? '' : ' · ' + fmtDur(n.durationSec)) +
+    (p ? ' · <span class="dot" style="background:' + esc(p.color) + '"></span>' + esc(p.name) : '') +
+    (total ? ' · ' + done + '/' + total + ' done' : '') + (n.aiNotesFileId ? ' · ' + icon('sparkles', 12) : '') +
+    (n.tags || []).map((t) => ' <span class="chip">#' + esc(t) + '</span>').join('') +
+    (opts.snippet ? '<br><span class="small">' + esc(opts.snippet) + '</span>' : '') + '</span></span></a>';
+}
+
+// ---- AI key setup (two steps, like the original app) ---------------------------
+function keySetupHtml(compact) {
+  const ks = S.keyStep || {};
+  return '<div class="card' + (compact ? ' tight' : '') + '" id="keysetup"><b>Turn on AI in two steps</b><p class="small muted" style="margin:2px 0 0">Free with your Google account. No card needed.</p>' +
+    '<div class="row mt" style="align-items:flex-start"><span class="step ' + (ks.opened ? 'done' : 'now') + '">' + (ks.opened ? icon('check', 13) : '1') + '</span><div class="grow">' +
+    '<a class="btn primary" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" data-act="keyOpened">' + icon('sparkles', 15) + ' Get free Gemini key ' + icon('external', 13) + '</a>' +
+    '<p class="tiny muted" style="margin:6px 0 0">In the page that opens, tap <b>Create API key</b>, then <b>Copy</b>.</p></div></div>' +
+    '<div class="row mt" style="align-items:flex-start"><span class="step ' + (ks.opened ? 'now' : '') + '">2</span><div class="grow"><form class="row" data-form="key">' +
+    '<input class="input pill" id="gemini-key" type="password" autocomplete="off" placeholder="Paste your key here" aria-label="Gemini API key" style="font-family:monospace">' +
+    '<button class="btn"' + (S.busy.key ? ' disabled' : '') + '>' + (S.busy.key ? spin() + ' Checking' : 'Save') + '</button></form>' +
+    (ks.error ? '<p class="tiny" style="color:var(--accent);margin:6px 0 0">' + esc(ks.error) + '</p>' : '') + '</div></div>' +
+    '<p class="tiny muted mt">The key is saved only in your private Apps Script settings. Nobody else using Little can read it.</p></div>';
+}
+ACT.keyOpened = () => { S.keyStep = Object.assign({}, S.keyStep, { opened: true }); setTimeout(render, 50); };
+function bindKeyForm(root, after) {
+  const f = $('[data-form="key"]', root || document);
+  if (!f) return;
+  const submit = async () => {
+    const k = $('#gemini-key', f).value.trim();
+    if (!k) return;
+    S.busy.key = true; S.keyStep = Object.assign({}, S.keyStep, { error: '' }); render(); if (after) after(true);
+    try {
+      const r = await api('saveKey', 'gemini', k);
+      S.settings = r.settings; S.keys = r.keys; S.keyStep = {};
+      toast('AI is on. Your free Gemini key works.');
+      if (after) after(false, true);
+    } catch (e) { S.keyStep = Object.assign({}, S.keyStep, { error: e.message }); }
+    delete S.busy.key; render(); if (after) after(false);
+  };
+  f.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
+  $('#gemini-key', f).addEventListener('paste', () => setTimeout(submit, 30));
+}
+function openKeyModal(reason) {
+  const draw = () => openModal('<div class="spread"><b>' + esc(reason || 'This needs AI') + '</b><button class="btn ghost icon" data-act="closeModal">' + icon('x') + '</button></div><div class="mt">' + keySetupHtml(true) + '</div>' +
+    '<p class="tiny muted mt">Prefer OpenAI or Claude? Add those keys in <a href="#/settings" data-act="closeModal">Settings</a>.</p>', (m) => bindKeyForm(m, (_, ok) => { if (ok) closeModal(); else if ($('#modal-root .modal')) draw(); }));
+  draw();
+}
+
+// ---------------------------------------------------------------------------
+// Home
+// ---------------------------------------------------------------------------
+VIEWS.home = {
+  html() {
+    const notes = S.notes;
+    const week = addDays(today(), 7);
+    const mine = S.todos.filter((t) => t.status !== 'done');
+    const dueSoon = mine.filter((t) => t.due && t.due <= week).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 5);
+    const doneCount = S.todos.filter((t) => t.status === 'done').length;
+    const total = S.todos.length;
+    const pct = total ? Math.round(doneCount / total * 100) : 0;
+    const pinned = notes.filter((n) => n.pinned).slice(0, 4);
+    const recent = notes.filter((n) => !n.pinned).slice(0, 6);
+    const todayEvents = (S.events || []).filter((e) => localDay(e.start) === today() && !e.allDay && new Date(e.end) > new Date());
+    let html = '<p class="muted small">' + new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }) + '</p>' +
+      '<h1 class="display">' + greeting() + ', ' + esc(S.user.name) + '</h1>';
+    html += '<div class="quick mt">' +
+      quick('#/record', 'Record', 'Meeting notes', 'mic', 'var(--accent)') + quick('#/write', 'Write', 'A quick note', 'pen', '#4d96ff') +
+      quick('#/dictate', 'Dictate', 'Talk, get clean text', 'wand', '#9b5de5') + quick('#/ideas', 'Idea', 'Jot it down', 'bulb', '#e9a23b') + '</div>';
+    if (!notes.length) {
+      html += '<div class="hero mt2"><h2 class="h2">Get started in a minute</h2><p class="muted small">Little records your meetings, writes the notes and keeps your to-dos, all in your own Google Drive and Sheets.</p>' +
+        '<div class="grid mt">' +
+        step1('🎙️', 'Record your next meeting', 'Tap Record, talk, then Stop. You get a transcript and your own notes side by side.', '#/record', 'Record') +
+        step1('✨', 'Turn on AI notes', 'A free Gemini key writes the summary and action items for you.', hasAi() ? '' : 'key', hasAi() ? 'AI is on ✓' : 'Turn on') +
+        step1('📅', 'Bring in your calendar', 'Record any meeting with the right title, people and template.', '#/meetings', 'Meetings') + '</div></div>';
+    } else if (!hasAi()) {
+      html += '<div class="mt2">' + keySetupHtml() + '</div>';
+    }
+    if (todayEvents.length) {
+      html += '<div class="spread mt2"><h2 class="h2">Up next today</h2><a class="small muted" href="#/meetings">All meetings</a></div><div class="list mt">' +
+        todayEvents.slice(0, 3).map((e) => '<div class="item"><span class="note-icon">' + icon('calendar', 16) + '</span><span class="grow"><b style="font-weight:500">' + esc(e.title) + '</b><span class="sub"><br>' + fmtTime(e.start) + ' · ' + e.attendees.length + ' people</span></span><button class="btn sm accent" data-act="recordEvent" data-id="' + esc(e.id) + '">' + icon('mic', 14) + ' Record</button></div>').join('') + '</div>';
+    }
+    html += '<div class="grid-2 mt2"><div class="card"><div class="spread"><h2 class="h2">To-dos</h2><a class="small muted" href="#/todos">Open board</a></div>' +
+      '<div class="row mt" style="gap:16px">' + ring(pct) + '<div><b style="font-size:20px">' + doneCount + ' of ' + total + '</b><p class="small muted" style="margin:0">' + (total ? (pct === 100 ? 'All done. Nice work! 🎉' : 'done. ' + mine.length + ' to go.') : 'Nothing on your list yet.') + '</p></div></div>' +
+      (dueSoon.length ? '<div class="mt">' + dueSoon.map((t) => '<div class="row small" style="padding:4px 0"><span class="dot" style="background:' + (STATUSES.filter((s) => s.id === t.status)[0] || STATUSES[0]).color + '"></span><span class="grow ellipsis">' + esc(t.title) + '</span><span class="' + (t.due < today() ? 'urgent' : 'muted') + ' tiny">' + fmtDue(t.due) + '</span></div>').join('') + '</div>' : '') +
+      '</div><div class="card"><div class="spread"><h2 class="h2">Slack inbox</h2><a class="small muted" href="#/inbox">Open</a></div>' +
+      (S.slack.connected ? '<p class="mt"><b style="font-size:20px">' + (S.inboxCount || 0) + '</b> <span class="muted small">asks and promises waiting from ' + esc(S.slack.team) + '</span></p>' : '<p class="small muted mt">Connect Slack and Little picks out what people asked you to do, so nothing slips.</p><a class="btn sm" href="#/inbox">' + icon('slack', 14) + ' Connect Slack</a>') +
+      '</div></div>';
+    if (pinned.length) html += '<h2 class="h2 mt2">Pinned</h2><div class="list mt">' + pinned.map((n) => noteRow(n)).join('') + '</div>';
+    if (recent.length) html += '<div class="spread mt2"><h2 class="h2">Recent notes</h2><a class="small muted" href="#/notes">All notes</a></div><div class="list mt">' + recent.map((n) => noteRow(n)).join('') + '</div>';
+    return html;
+  },
+  mount() {
+    bindKeyForm();
+    if (!S.events && !S.eventsLoading) loadEvents();
+  },
+};
+function quick(href, title, sub, ic, color) { return '<a href="' + href + '"><span class="qi" style="background:' + color + '">' + icon(ic, 17) + '</span><b>' + title + '</b><span class="tiny muted">' + sub + '</span></a>'; }
+function step1(emoji, title, body, href, cta) {
+  return '<div class="card tight"><div style="font-size:22px">' + emoji + '</div><b>' + title + '</b><p class="small muted" style="margin:4px 0 10px">' + body + '</p>' +
+    (href === 'key' ? '<button class="btn sm" data-act="openKey">' + cta + '</button>' : href ? '<a class="btn sm" href="' + href + '">' + cta + '</a>' : '<span class="chip">' + cta + '</span>') + '</div>';
+}
+ACT.openKey = () => openKeyModal('Turn on AI notes');
+function ring(pct) {
+  const r = 34, c = 2 * Math.PI * r;
+  return '<svg class="ring" viewBox="0 0 84 84"><circle cx="42" cy="42" r="' + r + '" fill="none" stroke="var(--subtle)" stroke-width="9"/><circle cx="42" cy="42" r="' + r + '" fill="none" stroke="var(--ok)" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + c + '" stroke-dashoffset="' + (c * (1 - pct / 100)) + '" transform="rotate(-90 42 42)"/><text x="42" y="47" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">' + pct + '%</text></svg>';
+}
+
+async function loadEvents() {
+  S.eventsLoading = true;
+  const from = new Date(); from.setDate(from.getDate() - 7); from.setHours(0, 0, 0, 0);
+  const to = new Date(); to.setDate(to.getDate() + 8); to.setHours(0, 0, 0, 0);
+  try {
+    S.events = (await api('listEvents', from.toISOString(), to.toISOString())).sort((a, b) => a.start.localeCompare(b.start));
+    S.eventsError = null;
+  }
+  catch (e) { S.events = []; S.eventsError = e.message; }
+  S.eventsLoading = false;
+  render();
+}
+ACT.recordEvent = (el) => {
+  const e = (S.events || []).filter((x) => x.id === el.dataset.id)[0];
+  if (!e) return;
+  S.draftEvent = e;
+  go('/record?event=' + encodeURIComponent(e.id));
+};
+
+// ---------------------------------------------------------------------------
+// Notes list (also a project's page)
+// ---------------------------------------------------------------------------
+function notesView(r, projectId) {
+  const q = (S.notesQuery != null ? S.notesQuery : r.params.q || '');
+  const tag = S.notesTag || '';
+  let notes = S.notes.filter((n) => !projectId || n.projectId === projectId);
+  const tags = Array.from(new Set(notes.reduce((a, n) => a.concat(n.tags || []), []))).sort();
+  if (tag) notes = notes.filter((n) => (n.tags || []).indexOf(tag) >= 0);
+  let deep = null;
+  if (q.trim()) {
+    const ql = q.toLowerCase();
+    const quickHits = notes.filter((n) => (n.title + ' ' + (n.tags || []).join(' ') + ' ' + (n.attendees || []).join(' ')).toLowerCase().indexOf(ql) >= 0);
+    deep = (S.deepResults && S.deepResults.q === q) ? S.deepResults.items : null;
+    const ids = {};
+    notes = quickHits.concat((deep || []).map((d) => { const n = S.notes.filter((x) => x.id === d.id)[0]; return n && (!projectId || n.projectId === projectId) ? Object.assign({ _snippet: d.snippet }, n) : null; }).filter(Boolean))
+      .filter((n) => !ids[n.id] && (ids[n.id] = 1));
+  }
+  const pinned = notes.filter((n) => n.pinned);
+  const rest = notes.filter((n) => !n.pinned);
+  const selecting = !!S.selected;
+  const selCount = selecting ? Object.keys(S.selected).length : 0;
+  const p = project(projectId);
+  let html = '';
+  if (p) {
+    html += '<div class="spread"><div class="row"><span class="dot" style="background:' + esc(p.color) + ';width:14px;height:14px"></span><h1 class="display">' + esc(p.name) + '</h1></div>' +
+      '<div class="row"><button class="btn sm" data-act="shareProject">' + icon('users', 14) + (p.role === 'member' ? ' Members' : ' Share') + '</button><button class="btn sm icon" data-act="projectMenu" aria-label="Project options">' + icon('more') + '</button></div></div>' +
+      '<p class="muted small">' + (p.role === 'member' ? 'Shared with you by ' + esc(p.owner || 'a teammate') + '. ' : p.shared ? 'Shared with your team. ' : '') + 'Notes and team to-dos for this project live in its Drive folder.</p>' +
+      (p.unavailable ? '<p class="notice">This project can\'t be opened right now. It may have been unshared or deleted.</p>' : '');
+  } else {
+    html += '<div class="spread"><h1 class="display">Notes</h1><div class="row"><a class="btn sm" href="#/write">' + icon('pen', 14) + ' Write</a><a class="btn sm accent" href="#/record">' + icon('mic', 14) + ' Record</a></div></div>';
+  }
+  html += '<div class="row mt"><input class="input pill grow" id="notes-q" placeholder="Search titles, notes, transcripts…" value="' + esc(q) + '">' +
+    '<button class="btn sm' + (selecting ? ' primary' : '') + '" data-act="selectMode">' + (selecting ? 'Done' : 'Select') + '</button></div>';
+  if (tags.length) html += '<div class="chips mt"><button class="chip' + (!tag ? ' on' : '') + '" data-act="tagFilter" data-tag="">All</button>' + tags.map((t) => '<button class="chip' + (tag === t ? ' on' : '') + '" data-act="tagFilter" data-tag="' + esc(t) + '">#' + esc(t) + '</button>').join('') + '</div>';
+  if (selecting) html += '<div class="row mt notice"><b>' + selCount + ' selected</b><span class="grow"></span><button class="btn sm" data-act="moveSelected"' + (selCount ? '' : ' disabled') + '>' + icon('folder', 14) + ' Move to…</button></div>';
+  if (q.trim() && !deep) html += '<p class="small muted mt">' + spin() + ' Searching inside notes and transcripts…</p>';
+  if (!notes.length) {
+    html += '<div class="empty card mt"><div class="big">' + (q ? '🔎' : '📝') + '</div>' + (q ? 'No notes match "' + esc(q) + '".' : p ? 'No notes in this project yet. Record or write one and pick this project.' : 'Your notes will show up here.') + '</div>';
+  } else {
+    if (pinned.length) html += '<h2 class="small muted mt2">Pinned</h2><div class="list mt">' + pinned.map((n) => noteRow(n, { select: selecting, snippet: n._snippet })).join('') + '</div>';
+    html += groupByDay(rest).map((g) => '<h2 class="small muted mt2">' + g.label + '</h2><div class="list mt">' + g.items.map((n) => noteRow(n, { select: selecting, snippet: n._snippet })).join('') + '</div>').join('');
+  }
+  if (p) html += projectTodosHtml(p);
+  return html;
+}
+function groupByDay(notes) {
+  const groups = [];
+  notes.forEach((n) => {
+    const d = new Date(n.createdAt), t = today();
+    const label = localDay(d) === t ? 'Today' : localDay(d) >= addDays(t, -7) ? 'This week' : d.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    const g = groups[groups.length - 1];
+    if (g && g.label === label) g.items.push(n); else groups.push({ label: label, items: [n] });
+  });
+  return groups;
+}
+function projectTodosHtml(p) {
+  const todos = S.todos.filter((t) => t.projectId === p.id && t.status !== 'done');
+  return '<div class="spread mt2"><h2 class="h2">Team to-dos</h2><a class="small muted" href="#/todos?project=' + esc(p.id) + '">Board</a></div>' +
+    (todos.length ? '<div class="list mt">' + todos.slice(0, 8).map((t) => '<div class="item"><span class="dot" style="background:' + STATUSES.filter((s) => s.id === t.status)[0].color + '"></span><span class="grow">' + esc(t.title) + (t.owner ? ' <span class="sub">· ' + esc(t.owner) + '</span>' : '') + '</span>' + (t.due ? '<span class="tiny muted">' + fmtDue(t.due) + '</span>' : '') + '</div>').join('') + '</div>' : '<p class="small muted">Nothing open.</p>');
+}
+let searchTimer = null;
+function mountNotes(r) {
+  const inp = $('#notes-q');
+  if (!inp) return;
+  if (r.params.q && S.notesQuery == null) { S.notesQuery = r.params.q; runDeepSearch(r.params.q); }
+  inp.addEventListener('input', () => {
+    S.notesQuery = inp.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => runDeepSearch(inp.value), 450);
+    render();
+  });
+}
+async function runDeepSearch(q) {
+  if (!q.trim()) return render();
+  try { const items = await api('searchNotes', q); if (S.notesQuery === q || (!S.notesQuery && route().params.q === q)) { S.deepResults = { q: q, items: items }; render(); } }
+  catch (e) { S.deepResults = { q: q, items: [] }; fail(e); }
+}
+VIEWS.notes = { html: (r) => notesView(r, null), mount: mountNotes, leave() { S.notesQuery = null; S.selected = null; S.notesTag = ''; } };
+VIEWS.project = { html: (r) => notesView(r, r.id), mount: mountNotes, leave() { S.notesQuery = null; S.selected = null; S.notesTag = ''; } };
+
+ACT.tagFilter = (el) => { S.notesTag = el.dataset.tag; render(); };
+ACT.selectMode = () => { S.selected = S.selected ? null : {}; render(); };
+ACT.toggleSelect = (el) => { const id = el.dataset.id; if (S.selected[id]) delete S.selected[id]; else S.selected[id] = 1; render(); };
+ACT.moveSelected = () => {
+  const ids = Object.keys(S.selected || {});
+  pickProject('Move ' + ids.length + ' note' + (ids.length === 1 ? '' : 's') + ' to', async (target) => {
+    const items = S.notes.filter((n) => ids.indexOf(n.id) >= 0).map((n) => ({ id: n.id, projectId: n.projectId || null }));
+    try { S.notes = await api('moveNotes', items, target); S.selected = null; toast('Moved'); render(); } catch (e) { fail(e); }
+  });
+};
+function pickProject(title, cb) {
+  openModal('<h3 class="h2">' + esc(title) + '</h3><div class="list mt"><button class="item" style="width:100%;border-left:0;border-right:0;background:none" data-pick="">' + icon('notes') + ' No project</button>' +
+    S.projects.filter((p) => !p.unavailable).map((p) => '<button class="item" style="width:100%;border-left:0;border-right:0;background:none" data-pick="' + esc(p.id) + '"><span class="dot" style="background:' + esc(p.color) + '"></span>' + esc(p.name) + '</button>').join('') + '</div>' +
+    '<button class="btn sm mt" data-act="newProject">+ New project</button>', (m) => {
+    $$('[data-pick]', m).forEach((b) => b.addEventListener('click', () => { closeModal(); cb(b.dataset.pick || null); }));
+  });
+}
+
+// ---- Projects ------------------------------------------------------------------
+ACT.newProject = () => {
+  closeModal();
+  promptModal('New project', 'Name', '', async (name) => {
+    try { const p = await api('createProject', name, null); S.projects.push(p); toast('Project created'); go('/project/' + p.id); } catch (e) { fail(e); }
+  }, 'Create');
+};
+ACT.projectMenu = () => {
+  const p = project(route().id);
+  if (!p) return;
+  openModal('<h3 class="h2">' + esc(p.name) + '</h3><p class="small muted">Color</p><div class="row wrap">' + PROJECT_COLORS.map((c) => '<button class="swatch' + (c === p.color ? ' on' : '') + '" style="background:' + c + '" data-color="' + c + '" aria-label="Color ' + c + '"></button>').join('') + '</div>' +
+    '<div class="list mt"><button class="item" style="width:100%;border-left:0;border-right:0;background:none" id="pm-rename">' + icon('pen') + ' Rename</button>' +
+    '<a class="item" href="https://drive.google.com/drive/folders/' + esc(p.folderId) + '" target="_blank" rel="noopener">' + icon('folder') + ' Open folder in Drive</a>' +
+    '<button class="item" style="width:100%;border-left:0;border-right:0;background:none;color:var(--accent)" id="pm-del">' + icon('trash') + (p.role === 'member' ? ' Leave project' : ' Delete project') + '</button></div>', (m) => {
+    $$('[data-color]', m).forEach((b) => b.addEventListener('click', async () => {
+      closeModal();
+      try { Object.assign(p, await api('updateProject', p.id, { color: b.dataset.color })); render(); } catch (e) { fail(e); }
+    }));
+    $('#pm-rename', m).addEventListener('click', () => promptModal('Rename project', 'Name', p.name, async (name) => {
+      try { Object.assign(p, await api('updateProject', p.id, { name: name })); render(); } catch (e) { fail(e); }
+    }));
+    $('#pm-del', m).addEventListener('click', () => confirmModal(p.role === 'member' ? 'Leave this project?' : 'Delete this project?',
+      p.role === 'member' ? "It disappears from your Little. The owner's notes stay in their Drive." : 'Its notes and to-dos are kept and move back to "No project". The project folder goes to the Drive trash.',
+      p.role === 'member' ? 'Leave' : 'Delete', async () => {
+        try { applyBootstrap(await api(p.role === 'member' ? 'leaveProject' : 'deleteProject', p.id)); go('/notes'); toast('Done'); } catch (e) { fail(e); }
+      }));
+  });
+};
+ACT.shareProject = () => {
+  const p = project(route().id);
+  if (!p) return;
+  const draw = (members, msg) => { const typed = $('#modal-root #sh-emails') ? $('#modal-root #sh-emails').value : ''; openModal('<div class="spread"><h3 class="h2">Share "' + esc(p.name) + '"</h3><button class="btn ghost icon" data-act="closeModal">' + icon('x') + '</button></div>' +
+    '<p class="small muted">Teammates get edit access to the project folder, so they see its notes and team to-dos. Personal to-dos and ideas stay private. Each person opens the join link in their email once.</p>' +
+    (p.role !== 'member' ? '<form class="row mt" id="sh-form"><input class="input pill grow" id="sh-emails" placeholder="name@company.com, another@…"><button class="btn primary">Invite</button></form>' : '') +
+    (msg ? '<p class="small mt">' + esc(msg) + '</p>' : '') +
+    '<h4 class="small muted mt">People</h4><div class="list">' + (members ? members.map((m) => '<div class="item"><span class="note-icon">' + esc((m.name || m.email).charAt(0).toUpperCase()) + '</span><span class="grow">' + esc(m.name || m.email) + '<span class="sub"><br>' + esc(m.email) + '</span></span><span class="tiny muted">' + (m.role === 'owner' ? 'Owner' : 'Can edit') + '</span>' +
+      (p.role !== 'member' && m.role !== 'owner' ? '<button class="btn ghost sm" data-remove="' + esc(m.email) + '">Remove</button>' : '') + '</div>').join('') : '<div class="item">' + spin() + '</div>') + '</div>' +
+    '<p class="tiny muted mt">Join link: <span style="user-select:all">' + esc(S.appUrl + '?join=' + p.folderId) + '</span></p>', (m) => {
+    const f = $('#sh-form', m);
+    if (f) f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const emails = $('#sh-emails', m).value;
+      try { const r = await api('shareProject', p.id, emails); p.shared = true; draw(r.members, r.failed.length ? "Couldn't share with " + r.failed.join(', ') : 'Invited. They\'ll get an email with the join link.'); } catch (err) { draw(members, err.message); }
+    });
+    $$('[data-remove]', m).forEach((b) => b.addEventListener('click', async () => {
+      try { draw(await api('removeMember', p.id, b.dataset.remove), 'Removed.'); } catch (err) { draw(members, err.message); }
+    }));
+    // Keep what the person was typing when the member list arrives and the modal redraws.
+    const inp = $('#sh-emails', m);
+    if (inp && typed && !/^Invited/.test(msg || '')) { inp.value = typed; inp.focus(); }
+  }); };
+  draw(null);
+  api('listMembers', p.id).then((m) => { if ($('#modal-root .modal')) draw(m); }).catch((e) => draw([], e.message));
+};
+
+VIEWS.join = {
+  html() {
+    return '<div class="card" style="max-width:520px;margin:10vh auto 0;text-align:center"><div style="font-size:34px">🤝</div><h1 class="h2">Join a shared project</h1>' +
+      '<p class="muted small">Paste the join link or the project\'s Drive folder link someone shared with you.</p>' +
+      '<form id="join-form" class="row mt"><input class="input pill grow" id="join-ref" value="' + esc(S.joinRef || '') + '" placeholder="https://…?join=…"><button class="btn primary"' + (S.busy.join ? ' disabled' : '') + '>' + (S.busy.join ? spin() : 'Join') + '</button></form></div>';
+  },
+  mount() {
+    $('#join-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      S.joinRef = $('#join-ref').value.trim();
+      busy('join', async () => { const r = await api('joinProject', S.joinRef); applyBootstrap(r.data); S.joinRef = ''; toast('You joined the project'); go('/project/' + r.projectId); });
+    });
+    if (S.joinRef && S.autoJoin) { S.autoJoin = false; $('#join-form').requestSubmit(); }
+  },
+};
+
+// ---------------------------------------------------------------------------
+// One note
+// ---------------------------------------------------------------------------
+VIEWS.note = {
+  html(r) {
+    const N = S.note;
+    if (!N || N.meta.id !== r.id) {
+      return '<a class="btn ghost sm" href="#/notes">' + icon('back', 14) + ' Notes</a>' + (S.noteError ? '<div class="empty card mt">' + esc(S.noteError) + '</div>' : '<div class="empty">' + spin() + '<p>Opening note…</p></div>');
+    }
+    const m = N.meta;
+    const p = project(m.projectId);
+    const tabName = S.noteTab || (N.aiNotes ? 'ai' : 'notes');
+    const added = new Set(S.todos.filter((t) => t.noteId === m.id).map((t) => t.title.toLowerCase()));
+    const actions = m.actions || [];
+    let html = '<div class="spread"><a class="btn ghost sm" href="' + (p ? '#/project/' + esc(p.id) : '#/notes') + '">' + icon('back', 14) + ' ' + (p ? esc(p.name) : 'Notes') + '</a>' +
+      '<div class="row"><button class="btn sm icon" data-act="pinNote" title="' + (m.pinned ? 'Unpin' : 'Pin') + '"' + (m.pinned ? ' style="color:var(--accent)"' : '') + '>' + icon('pin', 16) + '</button>' +
+      '<button class="btn sm" data-act="shareNote">' + icon('share', 14) + ' Share</button><button class="btn sm icon" data-act="noteMenu" aria-label="More">' + icon('more') + '</button></div></div>';
+    html += '<input class="title-input mt" id="note-title" value="' + esc(m.title) + '" aria-label="Title">' +
+      '<p class="small muted row wrap" style="margin:6px 0 0">' + new Date(m.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) +
+      (m.kind === 'written' ? '' : ' · ' + fmtDur(m.durationSec)) + ' · ' + esc(lang(m.language).name) + ' · ' + template(m.template).emoji + ' ' + esc(template(m.template).name) +
+      (m.attendees && m.attendees.length ? ' · With ' + esc(m.attendees.slice(0, 4).join(', ')) + (m.attendees.length > 4 ? ' +' + (m.attendees.length - 4) : '') : '') + '</p>' +
+      '<div class="chips mt">' + (m.tags || []).map((t) => '<span class="chip">#' + esc(t) + ' <button class="btn ghost" style="padding:0;border:0" data-act="removeTag" data-tag="' + esc(t) + '" aria-label="Remove tag">' + icon('x', 11) + '</button></span>').join('') + '<button class="chip" data-act="addTag">+ Tag</button></div>';
+    if (N.audio) {
+      html += '<div class="card tight mt">' + (S.audioUrl ? '<audio id="player" controls src="' + S.audioUrl + '" style="width:100%"></audio>' :
+        S.audioTooLarge ? '<iframe src="' + esc(N.audio.previewUrl) + '" style="width:100%;height:60px;border:0" allow="autoplay"></iframe>' :
+          '<button class="btn sm" data-act="loadAudio"' + (S.busy.audio ? ' disabled' : '') + '>' + (S.busy.audio ? spin() : icon('play', 14)) + ' Play recording</button> <span class="tiny muted">' + Math.round(N.audio.size / 1024 / 1024 * 10) / 10 + ' MB</span>') + '</div>';
+    }
+    html += '<div class="spread mt"><div class="seg" role="tablist">' + ['ai', 'notes', 'transcript'].map((t) => '<button class="' + (tabName === t ? 'on' : '') + '" data-act="noteTab" data-tab="' + t + '">' + { ai: 'AI notes', notes: 'My notes', transcript: 'Transcript' }[t] + '</button>').join('') + '</div>' +
+      (tabName === 'notes' ? '<span class="tiny muted" id="save-state">' + (S.noteSaving ? 'Saving…' : S.noteDirty ? 'Unsaved' : 'Saved') + '</span>' : '') + '</div>';
+    if (tabName === 'ai') {
+      if (S.busy.ai) html += '<div class="card mt empty">' + spin() + '<p>' + esc(providerName()) + ' is writing your notes…</p></div>';
+      else if (N.aiNotes) {
+        html += '<div class="card mt">' + md(N.showTranslation || N.aiNotes, { tasks: !N.showTranslation, todoBtn: !N.showTranslation, added: (i) => actions[i] && added.has(parseAction(actions[i].text).title.toLowerCase()) }) + '</div>' +
+          '<div class="row wrap mt"><select class="input pill" id="tpl" style="width:auto">' + S.templates.map((t) => '<option value="' + t.id + '"' + (t.id === m.template ? ' selected' : '') + '>' + t.emoji + ' ' + esc(t.name) + '</option>').join('') + '</select>' +
+          '<button class="btn sm" data-act="genNotes">' + icon('refresh', 14) + ' Rewrite</button>' +
+          '<select class="input pill" id="tr-lang" style="width:auto"><option value="">Translate…</option>' + S.languages.map((l) => '<option value="' + l.code + '">' + esc(l.native) + '</option>').join('') + '</select>' +
+          (N.showTranslation ? '<button class="btn sm" data-act="hideTranslation">Show original</button>' : '') + (S.busy.translate ? spin() : '') +
+          '<button class="btn sm ghost" data-act="editAi">' + icon('pen', 14) + ' Edit</button></div>';
+      } else {
+        html += '<div class="card mt" style="text-align:center"><div style="font-size:30px">✨</div><b>Get AI meeting notes</b><p class="small muted">Summary, key points, decisions and action items from the transcript and your notes.</p>' +
+          '<div class="row" style="justify-content:center"><select class="input pill" id="tpl" style="width:auto">' + S.templates.map((t) => '<option value="' + t.id + '"' + (t.id === m.template ? ' selected' : '') + '>' + t.emoji + ' ' + esc(t.name) + '</option>').join('') + '</select>' +
+          '<button class="btn accent" data-act="genNotes">' + icon('sparkles', 15) + ' Write notes</button></div></div>';
+      }
+    } else if (tabName === 'notes') {
+      html += '<textarea class="input mt" id="note-body" style="min-height:45vh" placeholder="Your notes…">' + esc(S.noteBody != null ? S.noteBody : N.notes) + '</textarea>';
+    } else {
+      const segs = N.transcript.segments || [];
+      html += '<div class="card mt">' + (segs.length ? '<div class="transcript">' + segs.map((s, i) => '<div class="seg-line' + (S.audioUrl ? ' play' : '') + '" data-act="seek" data-t="' + s.startSec + '"><span class="seg-time">' + fmtDur(s.startSec) + '</span><span>' + (s.speaker ? '<span class="speaker">' + esc(s.speaker) + ':</span> ' : '') + esc(s.text) + '</span></div>').join('') + '</div>'
+        : '<p class="muted small">No transcript.</p>') +
+        '<p class="tiny muted mt">' + ({ browser: 'Live transcript from your browser.', gemini: 'AI transcript by Gemini, with speaker labels.', openai: 'AI transcript by OpenAI Whisper.' }[N.transcript.source] || '') + (S.audioUrl ? ' Tap a line to play from there.' : '') + '</p>' +
+        (N.audio ? '<button class="btn sm" data-act="transcribe"' + (S.busy.transcribe ? ' disabled' : '') + '>' + (S.busy.transcribe ? spin() + ' Transcribing… (can take a minute or two)' : icon('sparkles', 14) + (segs.length ? ' Redo transcript with AI' : ' Transcribe with AI')) + '</button>' : '') + '</div>';
+    }
+    return html;
+  },
+  mount(r) {
+    const N = S.note;
+    if (!N || N.meta.id !== r.id) { if (!S.noteLoading) openNote(r.id, r.params.p || null); return; }
+    const title = $('#note-title');
+    title.addEventListener('change', () => saveTitle(title.value));
+    const body = $('#note-body');
+    if (body) body.addEventListener('input', () => { S.noteBody = body.value; S.noteDirty = true; $('#save-state').textContent = 'Unsaved'; clearTimeout(S.noteTimer); S.noteTimer = setTimeout(saveNoteBody, 1200); });
+    $$('[data-task]').forEach((cb) => cb.addEventListener('change', () => toggleTask(Number(cb.dataset.task), cb.checked)));
+    const tl = $('#tr-lang');
+    if (tl) tl.addEventListener('change', () => { if (tl.value) translate(tl.value); });
+    const tpl = $('#tpl');
+    if (tpl) tpl.addEventListener('change', async () => { try { Object.assign(N.meta, await api('patchNote', N.meta.id, N.meta.projectId || null, { template: tpl.value })); syncNoteMeta(N.meta); } catch (e) { fail(e); } });
+    if (S.autoAi) { S.autoAi = false; if (hasAi() && !N.aiNotes && (N.transcript.segments.length || N.notes.trim())) ACT.genNotes(); }
+  },
+  leave() { if (S.noteDirty) saveNoteBody(); if (S.audioUrl) URL.revokeObjectURL(S.audioUrl); S.audioUrl = null; S.audioTooLarge = false; S.noteTab = null; S.noteBody = null; S.noteError = null; },
+};
+async function openNote(id, projectId) {
+  S.noteLoading = true; S.noteError = null;
+  try { S.note = await api('getNote', id, projectId); S.noteBody = null; S.noteDirty = false; }
+  catch (e) { S.noteError = e.message; }
+  S.noteLoading = false;
+  render();
+}
+function syncNoteMeta(meta) { const i = S.notes.findIndex((n) => n.id === meta.id); if (i >= 0) S.notes[i] = meta; else S.notes.unshift(meta); }
+async function saveTitle(t) {
+  const N = S.note; t = t.trim() || 'Untitled';
+  try { N.meta = await api('updateNote', N.meta.id, N.meta.projectId || null, { title: t, notes: S.noteBody != null ? S.noteBody : N.notes }); syncNoteMeta(N.meta); toast('Saved'); } catch (e) { fail(e); }
+}
+async function saveNoteBody() {
+  const N = S.note;
+  if (!N || !S.noteDirty) return;
+  S.noteSaving = true; S.noteDirty = false;
+  const text = S.noteBody;
+  const el = $('#save-state'); if (el) el.textContent = 'Saving…';
+  try { N.meta = await api('updateNote', N.meta.id, N.meta.projectId || null, { title: N.meta.title, notes: text }); N.notes = text; syncNoteMeta(N.meta); }
+  catch (e) { S.noteDirty = true; fail(e); }
+  S.noteSaving = false;
+  const el2 = $('#save-state'); if (el2) el2.textContent = S.noteDirty ? 'Unsaved' : 'Saved';
+}
+ACT.noteTab = (el) => { if (S.noteDirty) saveNoteBody(); S.noteTab = el.dataset.tab; render(); };
+ACT.genNotes = () => busy('ai', async () => {
+  const N = S.note;
+  if (!hasAi()) throw new Error('NEED_KEY: Turn on AI to write meeting notes.');
+  S.noteTab = 'ai';
+  const r = await api('generateNotes', N.meta.id, N.meta.projectId || null);
+  N.meta = r.meta; N.aiNotes = r.markdown; N.showTranslation = null; syncNoteMeta(r.meta);
+  toast('AI notes are ready ✨');
+});
+ACT.transcribe = () => busy('transcribe', async () => {
+  const N = S.note;
+  if (!canTranscribe()) throw new Error('NEED_KEY: AI transcripts need a Gemini or OpenAI key.');
+  const r = await api('transcribeNote', N.meta.id, N.meta.projectId || null);
+  N.meta = r.meta; N.transcript = r.transcript; syncNoteMeta(r.meta);
+  toast('New transcript saved');
+});
+async function translate(code) {
+  const N = S.note;
+  await busy('translate', async () => { N.showTranslation = await api('translateMarkdown', N.aiNotes, code); });
+}
+ACT.hideTranslation = () => { S.note.showTranslation = null; render(); };
+ACT.editAi = () => {
+  const N = S.note;
+  openModal('<h3 class="h2">Edit AI notes</h3><textarea class="input mt" id="ai-edit" style="min-height:50vh;font-family:monospace;font-size:13px">' + esc(N.aiNotes) + '</textarea><div class="row mt" style="justify-content:flex-end"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary" id="ai-save">Save</button></div>', (m) => {
+    $('#ai-save', m).addEventListener('click', async () => {
+      const v = $('#ai-edit', m).value; closeModal();
+      try { N.meta = await api('saveAiNotes', N.meta.id, N.meta.projectId || null, v); N.aiNotes = v; syncNoteMeta(N.meta); render(); } catch (e) { fail(e); }
+    });
+  });
+};
+async function toggleTask(i, done) {
+  const N = S.note;
+  try { const r = await api('toggleAction', N.meta.id, N.meta.projectId || null, i, done); N.meta = r.meta; N.aiNotes = r.markdown; syncNoteMeta(r.meta); render(); if (done) toast('Nice, one less thing ✓'); }
+  catch (e) { fail(e); render(); }
+}
+function parseAction(text) {
+  const clean = (s) => String(s).replace(/\*\*/g, '').trim();
+  const m = String(text).match(/^\*\*([^*]+)\*\*\s*[:\-–]\s*(.+)$/);
+  if (!m) return { title: clean(text) };
+  const t = clean(m[2]);
+  return { owner: clean(m[1]), title: t.charAt(0).toUpperCase() + t.slice(1) };
+}
+ACT.actionTodo = async (el) => {
+  const N = S.note;
+  const a = (N.meta.actions || [])[Number(el.dataset.i)];
+  if (!a) return;
+  el.disabled = true;
+  try { const t = await api('addActionToTodo', N.meta.id, N.meta.projectId || null, a.text); upsertLocal(S.todos, t); toast('Added to to-dos'); render(); } catch (e) { fail(e); el.disabled = false; }
+};
+ACT.loadAudio = () => busy('audio', async () => {
+  const N = S.note;
+  const r = await api('getAudio', N.meta.id, N.meta.projectId || null);
+  if (r.tooLarge) { S.audioTooLarge = true; return; }
+  const bin = atob(r.data); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  S.audioUrl = URL.createObjectURL(new Blob([bytes], { type: r.mime }));
+  setTimeout(() => { const p = $('#player'); if (p) p.play().catch(() => {}); }, 100);
+});
+ACT.seek = (el) => {
+  const p = $('#player');
+  if (!p) { if (S.note.audio && !S.audioUrl) ACT.loadAudio(); return; }
+  p.currentTime = Number(el.dataset.t) || 0; p.play().catch(() => {});
+};
+ACT.pinNote = async () => {
+  const N = S.note;
+  try { N.meta = await api('patchNote', N.meta.id, N.meta.projectId || null, { pinned: !N.meta.pinned }); syncNoteMeta(N.meta); render(); } catch (e) { fail(e); }
+};
+ACT.addTag = () => promptModal('Add a tag', 'Tag', '', async (t) => {
+  const N = S.note;
+  const tag = t.replace(/^#/, '').trim().toLowerCase();
+  const tags = Array.from(new Set((N.meta.tags || []).concat([tag])));
+  try { N.meta = await api('patchNote', N.meta.id, N.meta.projectId || null, { tags: tags }); syncNoteMeta(N.meta); render(); } catch (e) { fail(e); }
+}, 'Add');
+ACT.removeTag = async (el) => {
+  const N = S.note;
+  try { N.meta = await api('patchNote', N.meta.id, N.meta.projectId || null, { tags: (N.meta.tags || []).filter((t) => t !== el.dataset.tag) }); syncNoteMeta(N.meta); render(); } catch (e) { fail(e); }
+};
+ACT.noteMenu = () => {
+  const N = S.note;
+  openModal('<h3 class="h2">' + esc(N.meta.title) + '</h3><div class="list mt">' +
+    '<button class="item" style="width:100%;border-left:0;border-right:0;background:none" id="nm-move">' + icon('folder') + ' Move to project</button>' +
+    '<a class="item" href="' + esc(N.folderUrl) + '" target="_blank" rel="noopener">' + icon('external') + ' Open in Google Drive</a>' +
+    '<button class="item" style="width:100%;border-left:0;border-right:0;background:none;color:var(--accent)" id="nm-del">' + icon('trash') + ' Delete note</button></div>', (m) => {
+    $('#nm-move', m).addEventListener('click', () => pickProject('Move to', async (target) => {
+      try { S.notes = await api('moveNotes', [{ id: N.meta.id, projectId: N.meta.projectId || null }], target); const moved = S.notes.filter((n) => n.id === N.meta.id)[0]; toast('Moved'); if (moved) { S.note = null; go(noteHref(moved).slice(1)); } } catch (e) { fail(e); }
+    }));
+    $('#nm-del', m).addEventListener('click', () => confirmModal('Delete this note?', 'Its folder moves to your Google Drive trash, so you can still restore it there.', 'Delete', async () => {
+      try { await api('deleteNote', N.meta.id, N.meta.projectId || null); S.notes = S.notes.filter((n) => n.id !== N.meta.id); S.note = null; toast('Deleted'); go('/notes'); } catch (e) { fail(e); }
+    }));
+  });
+};
+ACT.shareNote = () => {
+  const N = S.note;
+  openModal('<div class="spread"><h3 class="h2">Share note</h3><button class="btn ghost icon" data-act="closeModal">' + icon('x') + '</button></div><div class="list mt">' +
+    '<button class="item" style="width:100%;border-left:0;border-right:0;background:none" id="sn-copy">' + icon('copy') + ' Copy as text</button>' +
+    '<button class="item" style="width:100%;border-left:0;border-right:0;background:none" id="sn-wa">' + icon('whatsapp') + ' Send on WhatsApp</button>' +
+    '<button class="item" style="width:100%;border-left:0;border-right:0;background:none" id="sn-doc">' + icon('doc') + ' Save as Google Doc</button></div>' +
+    '<form class="row mt" id="sn-mail"><input class="input pill grow" id="sn-to" placeholder="Email to name@company.com"><button class="btn">' + icon('mail', 14) + ' Send</button></form><p class="tiny muted" id="sn-msg"></p>', (m) => {
+    const msg = (t) => { $('#sn-msg', m).textContent = t; };
+    const text = () => api('noteText', N.meta.id, N.meta.projectId || null);
+    $('#sn-copy', m).addEventListener('click', async () => { msg('Preparing…'); try { copyText(await text()); msg(''); } catch (e) { msg(e.message); } });
+    $('#sn-wa', m).addEventListener('click', async () => {
+      const w = window.open('', '_blank');
+      try { const t = await text(); if (w) w.location = 'https://wa.me/?text=' + encodeURIComponent(t); else window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank'); } catch (e) { if (w) w.close(); msg(e.message); }
+    });
+    $('#sn-doc', m).addEventListener('click', async () => { msg('Making the Google Doc…'); try { const url = await api('exportToDoc', N.meta.id, N.meta.projectId || null); $('#sn-msg', m).innerHTML = 'Saved next to the note in Drive. <a href="' + esc(url) + '" target="_blank" rel="noopener">Open the Doc</a>'; } catch (e) { msg(e.message); } });
+    $('#sn-mail', m).addEventListener('submit', async (e) => { e.preventDefault(); msg('Sending…'); try { await api('emailNote', N.meta.id, N.meta.projectId || null, $('#sn-to', m).value); msg('Sent from your Gmail.'); } catch (err) { msg(err.message); } });
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Recording (meetings) and upload fallback
+// ---------------------------------------------------------------------------
+const REC = { state: 'idle', segments: [], interim: '', chunks: [], pausedMs: 0 };
+function recSupported() { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
+function speechCtor() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+function elapsed() {
+  if (!REC.startedAt) return 0;
+  const pausedNow = REC.state === 'paused' ? Date.now() - REC.pauseStart : 0;
+  return Math.max(0, (Date.now() - REC.startedAt - REC.pausedMs - pausedNow) / 1000);
+}
+function pickMime() {
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  for (let i = 0; i < types.length; i++) if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(types[i])) return types[i];
+  return '';
+}
+function startSpeech() {
+  const C = speechCtor();
+  if (!C) return;
+  const rec = new C();
+  rec.lang = REC.lang; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript.trim();
+      if (!t) continue;
+      if (e.results[i].isFinal) REC.segments.push({ text: t, startSec: Math.round(elapsed()) });
+      else interim += t + ' ';
+    }
+    REC.interim = interim.trim();
+    drawTranscript();
+  };
+  rec.onerror = (e) => { if (e.error === 'not-allowed') { REC.speechBlocked = true; REC.wantSpeech = false; drawTranscript(); } };
+  // Browsers stop recognition after silence or about a minute; restart while recording.
+  rec.onend = () => { REC.interim = ''; if (REC.wantSpeech && REC.state === 'rec') { try { rec.start(); } catch (e) { /* already started */ } } };
+  REC.recog = rec;
+  try { rec.start(); } catch (e) { /* already started */ }
+}
+function stopSpeech() { REC.wantSpeech = false; if (REC.recog) { REC.recog.onend = null; try { REC.recog.stop(); } catch (e) { /* stopped */ } } REC.recog = null; }
+
+async function startRecording() {
+  REC.error = null;
+  if (!recSupported()) { REC.error = 'blocked'; render(); return; }
+  try {
+    REC.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    REC.error = 'blocked'; render(); return;
+  }
+  const mime = pickMime();
+  REC.recorder = new MediaRecorder(REC.stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : { audioBitsPerSecond: 24000 });
+  REC.chunks = [];
+  REC.recorder.ondataavailable = (e) => { if (e.data && e.data.size) REC.chunks.push(e.data); };
+  REC.recorder.start(1000);
+  REC.state = 'rec'; REC.startedAt = Date.now(); REC.pausedMs = 0; REC.segments = []; REC.interim = '';
+  REC.wantSpeech = true; startSpeech();
+  REC.timer = setInterval(tick, 500);
+  try { if (navigator.wakeLock) REC.wake = await navigator.wakeLock.request('screen'); } catch (e) { /* not allowed here */ }
+  meter();
+  render();
+}
+function meter() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    REC.ac = new AC();
+    const src = REC.ac.createMediaStreamSource(REC.stream);
+    const an = REC.ac.createAnalyser(); an.fftSize = 64; src.connect(an);
+    const data = new Uint8Array(an.frequencyBinCount);
+    const loop = () => {
+      if (REC.state === 'idle') return;
+      an.getByteFrequencyData(data);
+      const bars = $$('.wave span');
+      bars.forEach((b, i) => { const v = REC.state === 'paused' ? 0 : data[(i * 2) % data.length] / 255; b.style.height = Math.max(12, v * 100) + '%'; });
+      REC.raf = requestAnimationFrame(loop);
+    };
+    loop();
+  } catch (e) { /* no meter */ }
+}
+function tick() { const t = $('#rec-timer'); if (t) t.textContent = fmtDur(elapsed()); }
+function pauseRecording() {
+  if (REC.state === 'rec') { REC.recorder.pause(); REC.state = 'paused'; REC.pauseStart = Date.now(); stopSpeech(); }
+  else if (REC.state === 'paused') { REC.recorder.resume(); REC.pausedMs += Date.now() - REC.pauseStart; REC.state = 'rec'; REC.wantSpeech = true; startSpeech(); }
+  render();
+}
+function stopRecording() {
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearInterval(REC.timer); stopSpeech();
+      if (REC.raf) cancelAnimationFrame(REC.raf);
+      if (REC.ac) REC.ac.close().catch(() => {});
+      if (REC.stream) REC.stream.getTracks().forEach((t) => t.stop());
+      if (REC.wake) REC.wake.release().catch(() => {});
+      const blob = new Blob(REC.chunks, { type: (REC.recorder && REC.recorder.mimeType) || 'audio/webm' });
+      const dur = elapsed();
+      REC.state = 'idle'; REC.startedAt = null;
+      resolve({ blob: blob, durationSec: dur });
+    };
+    if (REC.recorder && REC.recorder.state !== 'inactive') { REC.recorder.onstop = finish; REC.recorder.stop(); } else finish();
+  });
+}
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
+}
+function drawTranscript() {
+  const el = $('#live-transcript');
+  if (!el) return;
+  el.innerHTML = (REC.segments.length || REC.interim ? REC.segments.map((s) => '<div class="seg-line"><span class="seg-time">' + fmtDur(s.startSec) + '</span><span>' + esc(s.text) + '</span></div>').join('') +
+    (REC.interim ? '<div class="seg-line"><span class="seg-time"></span><span class="interim">' + esc(REC.interim) + '</span></div>' : '')
+    : '<p class="muted small">' + (speechCtor() ? (REC.state === 'idle' ? 'The live transcript appears here while you record.' : 'Listening…') : 'This browser has no live transcript. Your recording is still saved; tap "Transcribe with AI" on the note afterwards.') + '</p>') +
+    (REC.speechBlocked ? '<p class="small notice mt">Live transcript is blocked here. The recording continues; transcribe it with AI afterwards.</p>' : '');
+  el.scrollTop = el.scrollHeight;
+}
+
+VIEWS.record = {
+  html(r) {
+    const ev = S.draftEvent && r.params.event === S.draftEvent.id ? S.draftEvent : null;
+    const D = S.recDraft || (S.recDraft = {
+      title: ev ? ev.title : '',
+      template: ev ? guessTemplate(ev) : 'general',
+      projectId: r.params.project || '',
+      language: S.settings.defaultLanguage,
+      notes: store.get('recNotes') || (ev ? '' : ''),
+      event: ev,
+    });
+    if (!D.notesTouched && !D.notes) D.notes = template(D.template).outline || '';
+    const live = REC.state !== 'idle';
+    let html = '<div class="spread"><h1 class="display">' + (live ? 'Recording' : 'Record a meeting') + '</h1>' + (live ? '' : '<a class="btn ghost sm" href="#/meetings">' + icon('calendar', 14) + ' From calendar</a>') + '</div>';
+    if (D.event) html += '<p class="small muted">For ' + esc(D.event.title) + ' · ' + fmtTime(D.event.start) + ' · ' + D.event.attendees.length + ' invited</p>';
+    if (REC.error === 'blocked') {
+      html += '<div class="card mt"><b>The microphone isn\'t available here</b><p class="small muted">Some browsers don\'t let Apps Script pages use the mic. You can still:</p>' +
+        '<ul class="small"><li><b>Upload a recording</b> from your phone\'s voice recorder (below), then get an AI transcript and notes.</li><li>Type notes and use your keyboard\'s mic button to dictate.</li><li>Open Little in Chrome on desktop or Android, where the mic usually works.</li></ul></div>';
+    }
+    html += '<div class="rec-bar mt">' + (live ? '<span class="rec-dot' + (REC.state === 'paused' ? ' paused' : '') + '"></span><span class="timer" id="rec-timer">' + fmtDur(elapsed()) + '</span><span class="wave grow">' + '<span></span>'.repeat(16) + '</span>' +
+      '<button class="btn" data-act="recPause">' + icon(REC.state === 'paused' ? 'play' : 'pause', 15) + (REC.state === 'paused' ? ' Resume' : ' Pause') + '</button><button class="btn accent" data-act="recStop"' + (S.busy.save ? ' disabled' : '') + '>' + (S.busy.save ? spin() + ' Saving' : icon('stop', 14) + ' Stop') + '</button>'
+      : '<button class="btn accent" data-act="recStart">' + icon('mic', 16) + ' Start recording</button><span class="grow small muted">Keep this page open while you record.</span><label class="btn" for="upload-audio">' + icon('upload', 15) + ' Upload a recording</label><input type="file" id="upload-audio" accept="audio/*" capture hidden>') + '</div>';
+    html += '<div class="row wrap mt"><input class="input" id="rec-title" placeholder="Meeting title" value="' + esc(D.title) + '" style="flex:2;min-width:200px">' +
+      '<select class="input" id="rec-tpl" style="flex:1;min-width:150px">' + S.templates.map((t) => '<option value="' + t.id + '"' + (t.id === D.template ? ' selected' : '') + '>' + t.emoji + ' ' + esc(t.name) + '</option>').join('') + '</select>' +
+      '<select class="input" id="rec-project" style="flex:1;min-width:140px"><option value="">No project</option>' + S.projects.filter((p) => !p.unavailable).map((p) => '<option value="' + esc(p.id) + '"' + (p.id === D.projectId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select>' +
+      '<select class="input" id="rec-lang" style="flex:1;min-width:120px" title="Language">' + S.languages.map((l) => '<option value="' + l.code + '"' + (l.code === D.language ? ' selected' : '') + '>' + esc(l.native) + '</option>').join('') + '</select></div>';
+    html += '<div class="grid-2 mt"><div><h2 class="small muted">Live transcript</h2><div class="card tight transcript" id="live-transcript" style="min-height:240px"></div></div>' +
+      '<div><h2 class="small muted">My notes</h2><textarea class="input" id="rec-notes" style="min-height:240px" placeholder="Jot what matters to you. The AI gives it extra weight.">' + esc(D.notes) + '</textarea></div></div>';
+    if (S.recFailed) html += '<div class="notice mt"><b>Couldn\'t save to Drive.</b> ' + esc(S.recFailed.error) + ' <button class="btn sm" data-act="retrySave">Try again</button> <a class="btn sm" download="little-recording.webm" href="' + S.recFailed.url + '">Download recording</a></div>';
+    return html;
+  },
+  mount() {
+    const D = S.recDraft;
+    drawTranscript();
+    $('#rec-title').addEventListener('input', (e) => { D.title = e.target.value; });
+    $('#rec-tpl').addEventListener('change', (e) => {
+      D.template = e.target.value;
+      if (!D.notesTouched) { D.notes = template(D.template).outline || ''; $('#rec-notes').value = D.notes; }
+    });
+    $('#rec-project').addEventListener('change', (e) => { D.projectId = e.target.value; });
+    $('#rec-lang').addEventListener('change', (e) => {
+      D.language = e.target.value; REC.lang = D.language;
+      if (REC.state === 'rec') { stopSpeech(); REC.wantSpeech = true; startSpeech(); }
+    });
+    $('#rec-notes').addEventListener('input', (e) => { D.notes = e.target.value; D.notesTouched = true; store.set('recNotes', D.notes); });
+    const up = $('#upload-audio');
+    if (up) up.addEventListener('change', () => { if (up.files[0]) uploadRecording(up.files[0]); });
+  },
+  leave() { if (REC.state === 'idle' && !S.busy.save) S.recDraft = null; },
+};
+function guessTemplate(e) {
+  const t = e.title.toLowerCase();
+  if (/\b1[:\-/ ]?on[:\-/ ]?1\b|\b1:1\b|one[- ]on[- ]one/.test(t) || e.attendees.length === 2) return 'one-on-one';
+  if (/review|retro|qbr|status|weekly|monthly/.test(t)) return 'review';
+  if (/brainstorm|ideation|ideas/.test(t)) return 'brainstorm';
+  if (/decision|decide|approval|go\/no/.test(t)) return 'decision';
+  if (/walkthrough|walk-through|demo|training|onboarding|how to/.test(t)) return 'walkthrough';
+  return 'general';
+}
+ACT.recStart = () => { REC.lang = S.recDraft.language; startRecording(); };
+ACT.recPause = pauseRecording;
+ACT.recStop = async () => {
+  const D = S.recDraft;
+  const res = await stopRecording();
+  await saveRecording(D, res.blob, res.durationSec, { language: D.language, source: 'browser', segments: REC.segments.slice() });
+};
+ACT.retrySave = () => { const f = S.recFailed; S.recFailed = null; saveRecording(f.draft, f.blob, f.durationSec, f.transcript); };
+async function saveRecording(D, blob, durationSec, transcript) {
+  S.busy.save = true; render();
+  try {
+    if (blob.size > 25 * 1024 * 1024) throw new Error('The recording is over 25 MB, too large to send to Apps Script. Download it and keep it in Drive yourself.');
+    const audio = blob.size ? { mime: blob.type || 'audio/webm', data: await blobToBase64(blob) } : null;
+    const ev = D.event;
+    const meta = await api('createNote', {
+      title: D.title.trim() || (ev ? ev.title : 'Meeting ' + new Date().toLocaleDateString([], { day: 'numeric', month: 'short' })),
+      notes: D.notes === (template(D.template).outline || '') ? '' : D.notes,
+      transcript: transcript, durationSec: durationSec, language: D.language, template: D.template, projectId: D.projectId || null,
+      calendarEventId: ev ? ev.eventId : undefined, attendees: ev ? ev.attendees.filter((a) => !a.self).map((a) => a.name || a.email) : [],
+      audio: audio,
+    });
+    S.notes.unshift(meta);
+    store.set('recNotes', null);
+    S.recDraft = null; S.draftEvent = null; S.recFailed = null;
+    delete S.busy.save;
+    S.autoAi = true;
+    toast('Saved to your Drive');
+    go(noteHref(meta).slice(1));
+  } catch (e) {
+    delete S.busy.save;
+    S.recFailed = { error: e.message, blob: blob, url: URL.createObjectURL(blob), draft: D, durationSec: durationSec, transcript: transcript };
+    render();
+  }
+}
+function uploadRecording(file) {
+  const D = S.recDraft;
+  if (!D.title) D.title = file.name.replace(/\.[^.]+$/, '');
+  const a = new Audio();
+  const url = URL.createObjectURL(file);
+  a.preload = 'metadata';
+  const done = () => { const d = isFinite(a.duration) ? a.duration : 0; URL.revokeObjectURL(url); saveRecording(D, file, d, { language: D.language, source: 'browser', segments: [] }); };
+  a.onloadedmetadata = done; a.onerror = done; a.src = url;
+}
+
+// ---- Write a note (no recording) ----------------------------------------------------
+VIEWS.write = {
+  html(r) {
+    const W = S.writeDraft || (S.writeDraft = store.get('writeDraft') || { title: '', notes: '', projectId: r.params.project || '', template: 'general' });
+    return '<div class="spread"><a class="btn ghost sm" href="#/notes">' + icon('back', 14) + ' Notes</a><button class="btn primary" data-act="saveWritten"' + (S.busy.write ? ' disabled' : '') + '>' + (S.busy.write ? spin() : 'Save note') + '</button></div>' +
+      '<input class="title-input mt" id="w-title" placeholder="Untitled" value="' + esc(W.title) + '">' +
+      '<div class="row mt"><select class="input pill" id="w-project" style="width:auto"><option value="">No project</option>' + S.projects.filter((p) => !p.unavailable).map((p) => '<option value="' + esc(p.id) + '"' + (p.id === W.projectId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select>' +
+      '<span class="tiny muted">Draft saved on this device as you type.</span></div>' +
+      '<textarea class="input mt" id="w-notes" style="min-height:55vh" placeholder="Start writing. Markdown works: # headings, - lists, - [ ] tasks.">' + esc(W.notes) + '</textarea>';
+  },
+  mount() {
+    const W = S.writeDraft;
+    const save = () => store.set('writeDraft', W);
+    $('#w-title').addEventListener('input', (e) => { W.title = e.target.value; save(); });
+    $('#w-notes').addEventListener('input', (e) => { W.notes = e.target.value; save(); });
+    $('#w-project').addEventListener('change', (e) => { W.projectId = e.target.value; save(); });
+    if (!W.title) $('#w-title').focus();
+  },
+};
+ACT.saveWritten = () => busy('write', async () => {
+  const W = S.writeDraft;
+  if (!W.title.trim() && !W.notes.trim()) throw new Error('Write something first.');
+  const meta = await api('createNote', { title: W.title.trim() || W.notes.trim().split('\n')[0].replace(/^#+\s*/, '').slice(0, 60), notes: W.notes, kind: 'written', projectId: W.projectId || null, language: S.settings.defaultLanguage });
+  S.notes.unshift(meta); S.writeDraft = null; store.set('writeDraft', null);
+  toast('Note saved'); go(noteHref(meta).slice(1));
+});
+
+// ---------------------------------------------------------------------------
+// Dictate (Wispr Flow style): talk, get clean text
+// ---------------------------------------------------------------------------
+const DIC = { on: false, raw: '', interim: '' };
+VIEWS.dictate = {
+  html() {
+    return '<h1 class="display">Dictate</h1><p class="muted">Talk naturally. Little removes the ums, fixes punctuation and applies your corrections.</p>' +
+      '<div style="text-align:center" class="mt"><button class="big-rec' + (DIC.on ? ' on' : '') + '" data-act="dicToggle" aria-label="' + (DIC.on ? 'Stop' : 'Start') + ' dictation">' + icon(DIC.on ? 'stop' : 'mic', 36) + '</button>' +
+      '<p class="small muted">' + (DIC.on ? 'Listening… tap to finish' : speechCtor() ? 'Tap and start talking' : "This browser can't listen here. Type or use your keyboard's mic, then tap Clean up.") + '</p>' +
+      '<select class="input pill" id="dic-lang" style="width:auto">' + S.languages.map((l) => '<option value="' + l.code + '"' + (l.code === (DIC.lang || S.settings.defaultLanguage) ? ' selected' : '') + '>' + esc(l.native) + '</option>').join('') + '</select></div>' +
+      '<div class="grid-2 mt"><div><h2 class="small muted">What you said</h2><textarea class="input" id="dic-raw" style="min-height:200px" placeholder="Your words appear here…">' + esc(DIC.raw + (DIC.interim ? ' ' + DIC.interim : '')) + '</textarea>' +
+      '<button class="btn primary mt" data-act="dicClean"' + (S.busy.clean ? ' disabled' : '') + '>' + (S.busy.clean ? spin() + ' Cleaning up' : icon('sparkles', 15) + ' Clean up') + '</button></div>' +
+      '<div><h2 class="small muted">Clean text</h2><div class="card" style="min-height:200px;white-space:pre-wrap" id="dic-clean">' + (DIC.clean ? esc(DIC.clean) : '<span class="muted small">Ready-to-send text appears here.</span>') + '</div>' +
+      (DIC.clean ? '<div class="row mt"><button class="btn" data-act="dicCopy">' + icon('copy', 14) + ' Copy</button><button class="btn" data-act="dicSave">' + icon('notes', 14) + ' Save as note</button><button class="btn ghost" data-act="dicClear">Clear</button></div>' : '') + '</div></div>';
+  },
+  mount() {
+    $('#dic-raw').addEventListener('input', (e) => { DIC.raw = e.target.value; DIC.interim = ''; });
+    $('#dic-lang').addEventListener('change', (e) => { DIC.lang = e.target.value; });
+  },
+  leave() { if (DIC.on) dicStop(); },
+};
+function dicStop() { DIC.on = false; if (DIC.rec) { DIC.rec.onend = null; try { DIC.rec.stop(); } catch (e) { /* stopped */ } } DIC.rec = null; if (DIC.interim) { DIC.raw = (DIC.raw + ' ' + DIC.interim).trim(); DIC.interim = ''; } }
+ACT.dicToggle = () => {
+  if (DIC.on) { dicStop(); render(); if (DIC.raw.trim() && hasAi()) ACT.dicClean(); return; }
+  const C = speechCtor();
+  if (!C) { toast("This browser can't listen here. Type instead, or use your keyboard's mic.", true); return; }
+  const rec = new C();
+  rec.lang = DIC.lang || S.settings.defaultLanguage; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) DIC.raw = (DIC.raw + ' ' + t.trim()).trim(); else interim += t;
+    }
+    DIC.interim = interim.trim();
+    const el = $('#dic-raw'); if (el) el.value = DIC.raw + (DIC.interim ? ' ' + DIC.interim : '');
+  };
+  rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { toast("The mic is blocked here. Type, or use your keyboard's mic button.", true); dicStop(); render(); } };
+  rec.onend = () => { if (DIC.on) { try { rec.start(); } catch (e) { /* already started */ } } };
+  DIC.rec = rec; DIC.on = true;
+  try { rec.start(); } catch (e) { /* already started */ }
+  render();
+};
+ACT.dicClean = () => busy('clean', async () => {
+  if (!hasAi()) throw new Error('NEED_KEY: Turn on AI to clean up dictation.');
+  const raw = ($('#dic-raw') ? $('#dic-raw').value : DIC.raw).trim();
+  DIC.raw = raw;
+  DIC.clean = await api('cleanupDictation', raw);
+});
+ACT.dicCopy = () => copyText(DIC.clean);
+ACT.dicClear = () => { DIC.raw = ''; DIC.clean = ''; DIC.interim = ''; render(); };
+ACT.dicSave = () => busy('dicSave', async () => {
+  const first = DIC.clean.split('\n')[0].slice(0, 60);
+  const meta = await api('createNote', { title: first || 'Dictation', notes: DIC.clean, kind: 'written', language: DIC.lang || S.settings.defaultLanguage });
+  S.notes.unshift(meta); DIC.raw = ''; DIC.clean = '';
+  toast('Saved as a note'); go(noteHref(meta).slice(1));
+});
+
+// ---------------------------------------------------------------------------
+// To-dos
+// ---------------------------------------------------------------------------
+VIEWS.todos = {
+  wide: true,
+  html(r) {
+    const scope = S.todoScope || 'all';
+    const pf = S.todoProject != null ? S.todoProject : (r.params.project || '');
+    const meKey = (S.user.name || '').toLowerCase(), meMail = (S.user.email || '').toLowerCase();
+    const isMine = (t) => { const o = String(t.owner || '').trim().toLowerCase(); return !o || o === meKey || o === meMail || o === meMail.split('@')[0] || o === 'you'; };
+    let list = S.todos.slice();
+    if (pf) list = list.filter((t) => (pf === 'personal' ? !t.projectId : t.projectId === pf));
+    if (scope === 'mine') list = list.filter((t) => !t.projectId || isMine(t));
+    if (scope === 'team') list = list.filter((t) => !!t.projectId);
+    const week = addDays(today(), 7);
+    const done = list.filter((t) => t.status === 'done').length;
+    const review = list.filter((t) => t.status === 'review').length;
+    const dueWeek = list.filter((t) => t.status !== 'done' && t.due && t.due <= week).length;
+    const overdue = list.filter((t) => t.status !== 'done' && t.due && t.due < today()).length;
+    const people = {};
+    list.filter((t) => t.status !== 'done').forEach((t) => { const k = t.owner || 'Unassigned'; people[k] = (people[k] || 0) + 1; });
+    let html = '<div class="spread"><h1 class="display">To-dos</h1><button class="btn primary" data-act="newTodo">' + icon('plus', 15) + ' To-do</button></div>' +
+      '<div class="row wrap mt"><div class="seg">' + [['all', 'All'], ['mine', 'My tasks'], ['team', 'Team tasks']].map((s) => '<button class="' + (scope === s[0] ? 'on' : '') + '" data-act="todoScope" data-s="' + s[0] + '">' + s[1] + '</button>').join('') + '</div>' +
+      '<select class="input pill" id="todo-project" style="width:auto"><option value="">All projects</option><option value="personal"' + (pf === 'personal' ? ' selected' : '') + '>Personal</option>' + S.projects.map((p) => '<option value="' + esc(p.id) + '"' + (pf === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') + '</select></div>' +
+      '<div class="grid mt" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">' +
+      '<div class="stat"><span class="small muted">Complete</span><b>' + done + '<span class="small muted"> / ' + list.length + '</span></b><div class="bar"><span style="width:' + (list.length ? done / list.length * 100 : 0) + '%"></span></div></div>' +
+      '<div class="stat"><span class="small muted">In review</span><b>' + review + '</b></div>' +
+      '<div class="stat"><span class="small muted">Due this week</span><b>' + dueWeek + '</b></div>' +
+      '<div class="stat"><span class="small muted">Overdue</span><b' + (overdue ? ' class="urgent"' : '') + '>' + overdue + '</b></div></div>';
+    const ppl = Object.keys(people).sort((a, b) => people[b] - people[a]);
+    if (ppl.length > 1) html += '<div class="chips mt">' + ppl.map((p) => '<span class="chip">' + esc(p) + ' · ' + people[p] + '</span>').join('') + '</div>';
+    html += '<div class="board mt">' + STATUSES.map((s) => {
+      const items = list.filter((t) => t.status === s.id).sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || String(a.due || '9').localeCompare(String(b.due || '9')));
+      return '<div class="col" data-status="' + s.id + '"><div class="col-head"><span class="dot" style="background:' + s.color + '"></span>' + s.name + '<span class="muted">' + items.length + '</span></div>' +
+        items.map(todoCard).join('') + (s.id === 'todo' ? '<button class="btn ghost sm" data-act="newTodo" style="width:100%">+ Add</button>' : '') + '</div>';
+    }).join('') + '</div>';
+    if (!S.todos.length) html += '<p class="small muted mt">Tip: tap "+ To-do" on an action item in any AI meeting notes, or add things from your Slack inbox.</p>';
+    return html;
+  },
+  mount() {
+    const sel = $('#todo-project');
+    sel.addEventListener('change', () => { S.todoProject = sel.value; render(); });
+    $$('.todo').forEach((el) => el.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', el.dataset.id); }));
+    $$('.col').forEach((col) => {
+      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop'); });
+      col.addEventListener('dragleave', () => col.classList.remove('drop'));
+      col.addEventListener('drop', (e) => { e.preventDefault(); col.classList.remove('drop'); setStatus(e.dataTransfer.getData('text/plain'), col.dataset.status); });
+    });
+    $$('[data-status-select]').forEach((s) => { s.addEventListener('click', (e) => e.stopPropagation()); s.addEventListener('change', () => setStatus(s.dataset.statusSelect, s.value)); });
+  },
+  leave() { S.todoProject = null; },
+};
+function todoCard(t) {
+  const p = project(t.projectId);
+  const note = t.noteId && S.notes.filter((n) => n.id === t.noteId)[0];
+  return '<div class="todo' + (t.status === 'done' ? ' done' : '') + '" draggable="true" data-id="' + esc(t.id) + '" data-act="editTodo">' +
+    '<div class="row" style="align-items:flex-start"><span class="grow t-title">' + (t.urgent ? '<span class="urgent">! </span>' : '') + esc(t.title) + '</span>' +
+    '<select class="input" data-status-select="' + esc(t.id) + '" aria-label="Status" style="width:auto;padding:2px 4px;font-size:12px;border-radius:8px">' + STATUSES.map((s) => '<option value="' + s.id + '"' + (s.id === t.status ? ' selected' : '') + '>' + s.name + '</option>').join('') + '</select></div>' +
+    '<div class="meta">' + (t.owner ? '<span>' + icon('users', 12) + ' ' + esc(t.owner) + '</span>' : '') + (t.due ? '<span class="' + (t.due < today() && t.status !== 'done' ? 'urgent' : '') + '">' + icon('calendar', 12) + ' ' + fmtDue(t.due) + '</span>' : '') +
+    (p ? '<span><span class="dot" style="background:' + esc(p.color) + '"></span> ' + esc(p.name) + '</span>' : '') + (note ? '<span>' + icon('notes', 12) + ' ' + esc(note.title) + '</span>' : '') + (t.link ? '<span>' + icon('slack', 12) + ' Slack</span>' : '') + '</div></div>';
+}
+ACT.todoScope = (el) => { S.todoScope = el.dataset.s; render(); };
+async function setStatus(id, status) {
+  const t = S.todos.filter((x) => x.id === id)[0];
+  if (!t || t.status === status) return;
+  const before = t.status;
+  t.status = status; render();
+  if (status === 'done') toast('Done! 🎉');
+  try { upsertLocal(S.todos, await api('saveTodo', t, t.projectId || null)); render(); } catch (e) { t.status = before; render(); fail(e); }
+}
+ACT.newTodo = () => todoModal({ status: 'todo', projectId: S.todoProject && S.todoProject !== 'personal' ? S.todoProject : '' });
+ACT.editTodo = (el, e) => { if (e.target.closest('select')) return; const t = S.todos.filter((x) => x.id === el.dataset.id)[0]; if (t) todoModal(t); };
+function todoModal(t) {
+  const isNew = !t.id;
+  openModal('<h3 class="h2">' + (isNew ? 'New to-do' : 'Edit to-do') + '</h3><form id="td-form" class="stack mt">' +
+    '<input class="input" id="td-title" placeholder="What needs doing?" value="' + esc(t.title || '') + '" required>' +
+    '<div class="row wrap"><select class="input grow" id="td-project"><option value="">Personal (only you)</option>' + S.projects.filter((p) => !p.unavailable).map((p) => '<option value="' + esc(p.id) + '"' + (p.id === t.projectId ? ' selected' : '') + '>' + esc(p.name) + ' (team)</option>').join('') + '</select>' +
+    '<select class="input grow" id="td-status">' + STATUSES.map((s) => '<option value="' + s.id + '"' + (s.id === t.status ? ' selected' : '') + '>' + s.name + '</option>').join('') + '</select></div>' +
+    '<div class="row wrap"><input class="input grow" id="td-owner" placeholder="Owner (name or email)" value="' + esc(t.owner || '') + '"><input class="input grow" id="td-due" type="date" value="' + esc(t.due || '') + '"></div>' +
+    '<label class="check small"><input type="checkbox" id="td-urgent"' + (t.urgent ? ' checked' : '') + '> Urgent</label>' +
+    (t.link ? '<a class="small" href="' + esc(t.link) + '" target="_blank" rel="noopener">' + icon('slack', 13) + ' Open the Slack message</a>' : '') +
+    '<div class="row" style="justify-content:space-between">' + (isNew ? '<span></span>' : '<button type="button" class="btn ghost danger" id="td-del">' + icon('trash', 14) + ' Delete</button>') +
+    '<div class="row"><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button class="btn primary">Save</button></div></div></form>', (m) => {
+    $('#td-title', m).focus();
+    $('#td-form', m).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const next = Object.assign({}, t, {
+        title: $('#td-title', m).value.trim(), projectId: $('#td-project', m).value || undefined, status: $('#td-status', m).value,
+        owner: $('#td-owner', m).value.trim() || undefined, due: $('#td-due', m).value || undefined, urgent: $('#td-urgent', m).checked,
+      });
+      if (!next.title) return;
+      closeModal();
+      try { const saved = await api('saveTodo', next, isNew ? undefined : (t.projectId || null)); upsertLocal(S.todos, saved); render(); toast(isNew ? 'Added' : 'Saved'); } catch (err) { fail(err); }
+    });
+    const del = $('#td-del', m);
+    if (del) del.addEventListener('click', async () => {
+      closeModal();
+      try { await api('deleteTodo', t.id, t.projectId || null); S.todos = S.todos.filter((x) => x.id !== t.id); render(); toast('Deleted'); } catch (err) { fail(err); }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Meetings (Google Calendar)
+// ---------------------------------------------------------------------------
+VIEWS.meetings = {
+  html() {
+    let html = '<div class="spread"><h1 class="display">Meetings</h1><button class="btn sm" data-act="reloadEvents">' + icon('refresh', 14) + ' Refresh</button></div><p class="muted small">From your Google Calendar. Record with the right title, people and template, and the notes link back to the meeting.</p>';
+    if (!S.events) { if (!S.eventsLoading) setTimeout(loadEvents, 0); return html + '<div class="empty">' + spin() + '</div>'; }
+    if (S.eventsError) html += '<p class="notice">' + esc(S.eventsError) + '</p>';
+    const now = new Date();
+    const upcoming = S.events.filter((e) => new Date(e.end) >= now && !e.allDay);
+    const past = S.events.filter((e) => new Date(e.end) < now && !e.allDay).reverse();
+    const notesFor = (e) => S.notes.filter((n) => n.calendarEventId === e.eventId && localDay(n.createdAt) === localDay(e.start));
+    const row = (e) => {
+      const ns = notesFor(e);
+      const live = new Date(e.start) <= now && new Date(e.end) >= now;
+      return '<div class="item"><span class="note-icon" style="flex-direction:column;width:46px;height:46px;font-size:11px;line-height:1.1"><b>' + new Date(e.start).toLocaleDateString([], { weekday: 'short' }) + '</b>' + new Date(e.start).getDate() + '</span>' +
+        '<span class="grow"><b style="font-weight:500">' + esc(e.title) + '</b>' + (live ? ' <span class="chip" style="background:var(--accent);color:#fff">Now</span>' : '') + '<span class="sub"><br>' + fmtTime(e.start) + '–' + fmtTime(e.end) + ' · ' + e.attendees.length + ' people' + (e.meetLink ? ' · <a href="' + esc(e.meetLink) + '" target="_blank" rel="noopener">Join Meet</a>' : '') + '</span></span>' +
+        (ns.length ? '<a class="btn sm" href="' + noteHref(ns[0]) + '">' + icon('notes', 14) + ' Notes</a>' : '<button class="btn sm' + (live ? ' accent' : '') + '" data-act="recordEvent" data-id="' + esc(e.id) + '">' + icon('mic', 14) + ' Record</button>') + '</div>';
+    };
+    const days = {};
+    upcoming.forEach((e) => { const k = localDay(e.start); (days[k] = days[k] || []).push(e); });
+    html += Object.keys(days).length ? Object.keys(days).sort().map((d) => '<h2 class="small muted mt2">' + relDay(d + 'T12:00:00') + '</h2><div class="list mt">' + days[d].map(row).join('') + '</div>').join('')
+      : '<div class="empty card mt">No meetings in the next week.</div>';
+    if (past.length) html += '<h2 class="h2 mt2">Last 7 days</h2><div class="list mt">' + past.slice(0, 20).map(row).join('') + '</div>';
+    return html;
+  },
+};
+ACT.reloadEvents = () => { S.events = null; render(); };
+
+// ---------------------------------------------------------------------------
+// Ask your notes
+// ---------------------------------------------------------------------------
+VIEWS.ask = {
+  html() {
+    const A = S.ask || {};
+    const cite = {};
+    (A.sources || []).forEach((s) => { cite[s.n] = s; });
+    return '<h1 class="display">Ask your notes</h1><p class="muted">Questions answered from your meetings, with links to where it came from.</p>' +
+      '<form id="ask-form" class="row mt"><input class="input pill grow" id="ask-q" placeholder="What did we decide about the launch date?" value="' + esc(A.q || '') + '"><button class="btn primary"' + (S.busy.ask ? ' disabled' : '') + '>' + (S.busy.ask ? spin() : 'Ask') + '</button></form>' +
+      (!A.answer && !S.busy.ask ? '<div class="chips mt">' + ['What are my open action items?', 'Summarize this week\'s meetings', 'What did the team decide recently?'].map((q) => '<button class="chip" data-act="askChip">' + esc(q) + '</button>').join('') + '</div>' : '') +
+      (A.answer ? '<div class="card mt">' + md(A.answer, { cite: cite }) + '<h3 class="small muted mt">Sources</h3><div class="list">' + A.sources.map((s) => '<a class="item" href="#/note/' + esc(s.id) + (s.projectId ? '?p=' + esc(s.projectId) : '') + '"><span class="cite">' + s.n + '</span><span class="grow">' + esc(s.title) + '</span><span class="tiny muted">' + esc(s.date) + '</span></a>').join('') + '</div></div>' : '');
+  },
+  mount() {
+    $('#ask-form').addEventListener('submit', (e) => { e.preventDefault(); ask($('#ask-q').value); });
+  },
+};
+ACT.askChip = (el) => ask(el.textContent);
+function ask(q) {
+  q = q.trim(); if (!q) return;
+  S.ask = { q: q };
+  busy('ask', async () => {
+    if (!hasAi()) throw new Error('NEED_KEY: Turn on AI to ask your notes.');
+    const r = await api('askNotes', q);
+    S.ask = { q: q, answer: r.answer, sources: r.sources };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ideas
+// ---------------------------------------------------------------------------
+VIEWS.ideas = {
+  wide: true,
+  html() {
+    const color = S.ideaColor || 'plain';
+    const ideas = S.ideas.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || String(b.createdAt).localeCompare(String(a.createdAt)));
+    const spark = SPARKS[new Date().getDate() % SPARKS.length];
+    return '<h1 class="display">Ideas</h1><p class="muted">A private scratch space. Never shared with project teams.</p>' +
+      '<div class="idea mt" style="background:var(--idea-' + color + ');max-width:640px"><textarea id="idea-new" rows="3" placeholder="' + esc(spark) + '"></textarea>' +
+      '<div class="spread"><div class="row">' + IDEA_COLORS.map((c) => '<button class="swatch' + (c === color ? ' on' : '') + '" style="background:var(--idea-' + c + ')" data-act="ideaColor" data-c="' + c + '" aria-label="' + c + '"></button>').join('') + '</div>' +
+      '<button class="btn primary sm" data-act="addIdea">Save idea</button></div></div>' +
+      (ideas.length ? '<div class="ideas mt2">' + ideas.map(ideaCard).join('') + '</div>' : '<div class="empty mt2"><div class="big">💡</div>Your ideas live here. Small ones count too.</div>');
+  },
+  mount() {
+    const n = $('#idea-new');
+    n.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ACT.addIdea(); });
+    $$('[data-idea-text]').forEach((t) => t.addEventListener('change', async () => {
+      const i = S.ideas.filter((x) => x.id === t.dataset.ideaText)[0];
+      if (!i || i.text === t.value) return;
+      i.text = t.value;
+      try { upsertLocal(S.ideas, await api('saveIdea', i)); } catch (e) { fail(e); }
+    }));
+  },
+};
+function ideaCard(i) {
+  return '<div class="idea" style="background:var(--idea-' + esc(i.color || 'plain') + ')"><textarea data-idea-text="' + esc(i.id) + '" rows="' + Math.min(10, Math.max(2, Math.ceil(String(i.text).length / 40))) + '">' + esc(i.text) + '</textarea>' +
+    '<div class="spread"><span class="tiny muted">' + relDay(i.createdAt) + '</span><div class="row">' +
+    '<button class="btn ghost sm icon" data-act="pinIdea" data-id="' + esc(i.id) + '" title="Pin"' + (i.pinned ? ' style="color:var(--accent)"' : '') + '>' + icon('pin', 14) + '</button>' +
+    '<button class="btn ghost sm" data-act="riffIdea" data-id="' + esc(i.id) + '"' + (S.busy['riff' + i.id] ? ' disabled' : '') + '>' + (S.busy['riff' + i.id] ? spin() : icon('sparkles', 14)) + ' Riff</button>' +
+    '<button class="btn ghost sm icon" data-act="delIdea" data-id="' + esc(i.id) + '" title="Delete">' + icon('trash', 14) + '</button></div></div>' +
+    (i.riff ? '<div class="riff">' + md(i.riff) + '</div>' : '') + '</div>';
+}
+ACT.ideaColor = (el) => { const v = $('#idea-new').value; S.ideaColor = el.dataset.c; render(); $('#idea-new').value = v; $('#idea-new').focus(); };
+ACT.addIdea = async () => {
+  const t = $('#idea-new').value.trim();
+  if (!t) return;
+  try { const i = await api('saveIdea', { text: t, color: S.ideaColor || 'plain' }); S.ideas.unshift(i); render(); toast('Idea saved 💡'); } catch (e) { fail(e); }
+};
+ACT.pinIdea = async (el) => { const i = S.ideas.filter((x) => x.id === el.dataset.id)[0]; i.pinned = !i.pinned; render(); try { await api('saveIdea', i); } catch (e) { fail(e); } };
+ACT.delIdea = (el) => confirmModal('Delete this idea?', 'This can\'t be undone.', 'Delete', async () => {
+  try { await api('deleteIdea', el.dataset.id); S.ideas = S.ideas.filter((x) => x.id !== el.dataset.id); render(); } catch (e) { fail(e); }
+});
+ACT.riffIdea = (el) => busy('riff' + el.dataset.id, async () => {
+  if (!hasAi()) throw new Error('NEED_KEY: Turn on AI to riff on ideas.');
+  upsertLocal(S.ideas, await api('riffIdea', el.dataset.id));
+});
+
+// ---------------------------------------------------------------------------
+// Slack inbox
+// ---------------------------------------------------------------------------
+VIEWS.inbox = {
+  html() {
+    let html = '<div class="spread"><h1 class="display">Inbox</h1>' + (S.slack.connected ? '<div class="row"><select class="input pill" id="in-days" style="width:auto">' + [1, 2, 3, 7].map((d) => '<option value="' + d + '"' + ((S.inboxDays || 2) === d ? ' selected' : '') + '>Last ' + (d === 1 ? 'day' : d + ' days') + '</option>').join('') + '</select>' +
+      '<button class="btn sm" data-act="refreshInbox"' + (S.busy.inbox ? ' disabled' : '') + '>' + (S.busy.inbox ? spin() + ' Reading Slack' : icon('refresh', 14) + ' Check Slack') + '</button></div>' : '') + '</div>';
+    if (!S.slack.connected) {
+      return html + '<p class="muted">Little reads your Slack DMs, @mentions and your own messages, and picks out what people asked you to do and what you promised.</p>' +
+        '<div class="card mt"><b>Connect Slack (about 3 minutes, once)</b><ol class="small" style="padding-left:18px">' +
+        '<li>Open <a href="https://api.slack.com/apps?new_app=1" target="_blank" rel="noopener">api.slack.com/apps</a>, choose <b>Create New App → From scratch</b>, name it "Little" and pick your workspace.</li>' +
+        '<li>Go to <b>OAuth &amp; Permissions → User Token Scopes</b> and add <code>search:read</code>.</li>' +
+        '<li>Tap <b>Install to Workspace</b> and allow it.</li><li>Copy the <b>User OAuth Token</b> (starts with <code>xoxp-</code>) and paste it here.</li></ol>' +
+        '<form id="slack-form" class="row mt"><input class="input pill grow" id="slack-token" type="password" placeholder="xoxp-…" autocomplete="off"><button class="btn primary"' + (S.busy.slack ? ' disabled' : '') + '>' + (S.busy.slack ? spin() : 'Connect') + '</button></form>' +
+        '<p class="tiny muted mt">The token is stored only in your private Apps Script settings. Little only searches messages; it never posts.</p></div>';
+    }
+    const items = (S.inbox && S.inbox.items) || [];
+    html += '<p class="muted small">From ' + esc(S.slack.team) + '. ' + (S.inbox && S.inbox.scanned != null ? 'Checked ' + S.inbox.scanned + ' new message' + (S.inbox.scanned === 1 ? '' : 's') + '. ' : '') + '<button class="btn ghost sm" data-act="disconnectSlack">Disconnect</button></p>';
+    if (!S.inbox) { setTimeout(loadInbox, 0); return html + '<div class="empty">' + spin() + '</div>'; }
+    if (!items.length) return html + '<div class="empty card mt"><div class="big">📭</div>All clear. Tap "Check Slack" for anything new.</div>';
+    const mine = items.filter((i) => i.mine), asks = items.filter((i) => !i.mine);
+    const block = (title, list) => list.length ? '<h2 class="small muted mt2">' + title + '</h2><div class="list mt">' + list.map((i) => '<div class="item" style="align-items:flex-start"><span class="note-icon">' + icon(i.mine ? 'check' : 'slack', 16) + '</span><span class="grow"><b style="font-weight:500">' + esc(i.title) + '</b>' +
+      '<span class="sub"><br>' + esc(i.who) + ' · ' + esc(i.where) + ' · ' + relDay(i.at) + (i.due ? ' · <span class="' + (i.due < today() ? 'urgent' : '') + '">due ' + fmtDue(i.due) + '</span>' : '') + '</span>' +
+      '<span class="small muted" style="display:block;margin-top:4px;border-left:2px solid var(--border);padding-left:8px">' + esc(i.quote) + '</span></span>' +
+      '<span class="row" style="flex-direction:column;align-items:stretch"><button class="btn sm primary" data-act="inboxTodo" data-key="' + esc(i.key) + '">+ To-do</button><button class="btn sm ghost" data-act="inboxDismiss" data-key="' + esc(i.key) + '">Dismiss</button>' +
+      (i.link ? '<a class="btn sm ghost" href="' + esc(i.link) + '" target="_blank" rel="noopener">Open ' + icon('external', 12) + '</a>' : '') + '</span></div>').join('') + '</div>' : '';
+    return html + block('Asked of you', asks) + block('You promised', mine);
+  },
+  mount() {
+    const f = $('#slack-form');
+    if (f) f.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const token = $('#slack-token').value; // read before busy() re-renders the form
+      busy('slack', async () => { S.slack = await api('connectSlack', token); toast('Slack connected'); S.inbox = null; });
+    });
+    const d = $('#in-days');
+    if (d) d.addEventListener('change', () => { S.inboxDays = Number(d.value); });
+  },
+};
+async function loadInbox() {
+  try { S.inbox = await api('listInbox'); S.inboxCount = S.inbox.items.length; } catch (e) { S.inbox = { items: [] }; fail(e); }
+  render();
+}
+ACT.refreshInbox = () => busy('inbox', async () => {
+  if (!hasAi()) throw new Error('NEED_KEY: The Slack inbox uses AI to find asks and promises.');
+  S.inbox = await api('refreshInbox', S.inboxDays || 2);
+  S.inboxCount = S.inbox.items.length;
+  if (!S.inbox.connected) S.slack = { connected: false };
+});
+ACT.inboxTodo = (el) => busy('inboxItem', async () => {
+  const r = await api('handleInboxItem', el.dataset.key, 'todo', null);
+  if (r.todo) S.todos.unshift(r.todo);
+  S.inbox = Object.assign(S.inbox, { items: r.inbox.items }); S.inboxCount = r.inbox.items.length;
+  toast('Added to to-dos');
+});
+ACT.inboxDismiss = (el) => busy('inboxItem', async () => {
+  const r = await api('handleInboxItem', el.dataset.key, 'dismiss');
+  S.inbox = Object.assign(S.inbox, { items: r.inbox.items }); S.inboxCount = r.inbox.items.length;
+});
+ACT.disconnectSlack = () => confirmModal('Disconnect Slack?', 'Little forgets the token and clears the inbox. To-dos you added stay.', 'Disconnect', () => busy('slack', async () => { S.slack = await api('disconnectSlack'); S.inbox = null; S.inboxCount = 0; }));
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+VIEWS.settings = {
+  html() {
+    const s = S.settings;
+    const keyRow = (p, name, hint, link) => '<div class="item" style="align-items:flex-start"><span class="grow"><b style="font-weight:500">' + name + '</b>' + (S.keys[p] ? ' <span class="chip">' + icon('check', 12) + ' ' + esc(S.keys[p]) + '</span>' : '') + '<span class="sub"><br>' + hint + ' <a href="' + link + '" target="_blank" rel="noopener">Get a key</a></span>' +
+      '<form class="row mt" data-keyform="' + p + '"><input class="input pill grow" type="password" autocomplete="off" placeholder="' + (S.keys[p] ? 'Replace key' : 'Paste key') + '"><button class="btn sm">' + (S.busy['key' + p] ? spin() : 'Save') + '</button>' + (S.keys[p] ? '<button type="button" class="btn sm ghost" data-act="removeKey" data-p="' + p + '">Remove</button>' : '') + '</form></span></div>';
+    return '<h1 class="display">Settings</h1>' +
+      '<h2 class="h2 mt2">AI</h2><p class="small muted">' + (hasAi() ? 'AI is on, using <b>' + esc(providerName()) + '</b>.' : 'AI is off. Recording, notes and to-dos work without it.') + '</p>' +
+      (!S.keys.gemini ? keySetupHtml() : '') +
+      '<div class="list mt">' + keyRow('gemini', 'Gemini (free)', 'Notes, transcripts with speaker labels, Slack inbox.', 'https://aistudio.google.com/apikey') +
+      keyRow('openai', 'OpenAI', 'Notes and Whisper transcripts.', 'https://platform.openai.com/api-keys') +
+      keyRow('anthropic', 'Claude', 'Notes and dictation clean-up. Claude can\'t transcribe audio.', 'https://console.anthropic.com/settings/keys') + '</div>' +
+      '<div class="row mt"><label class="small" for="set-provider">Use for text</label><select class="input pill" id="set-provider" style="width:auto"><option value="">Automatic</option>' + ['gemini', 'openai', 'anthropic'].filter((p) => S.keys[p]).map((p) => '<option value="' + p + '"' + (s.aiProvider === p ? ' selected' : '') + '>' + { gemini: 'Gemini', openai: 'OpenAI', anthropic: 'Claude' }[p] + '</option>').join('') + '</select></div>' +
+      '<h2 class="h2 mt2">Recording</h2><div class="card mt stack"><label class="check"><input type="checkbox" id="set-audio"' + (s.saveAudio ? ' checked' : '') + '> Save the audio to Drive (needed for AI transcripts and playback)</label>' +
+      '<div class="row"><label class="small" for="set-lang">Default language</label><select class="input pill" id="set-lang" style="width:auto">' + S.languages.map((l) => '<option value="' + l.code + '"' + (l.code === s.defaultLanguage ? ' selected' : '') + '>' + esc(l.name) + ' · ' + esc(l.native) + '</option>').join('') + '</select></div></div>' +
+      '<h2 class="h2 mt2">Slack</h2><div class="card mt spread"><span>' + (S.slack.connected ? 'Connected to <b>' + esc(S.slack.team) + '</b>' : 'Not connected') + '</span><a class="btn sm" href="#/inbox">' + (S.slack.connected ? 'Open inbox' : 'Connect') + '</a></div>' +
+      '<h2 class="h2 mt2">Your data</h2><div class="list mt"><a class="item" href="' + esc(S.folderUrl) + '" target="_blank" rel="noopener">' + icon('folder') + '<span class="grow">Little folder in Google Drive<span class="sub"><br>Every note as readable files, plus recordings</span></span>' + icon('external', 14) + '</a>' +
+      '<a class="item" href="' + esc(S.dataUrl) + '" target="_blank" rel="noopener">' + icon('doc') + '<span class="grow">"Little data" spreadsheet<span class="sub"><br>Notes list, projects, to-dos, ideas, inbox</span></span>' + icon('external', 14) + '</a>' +
+      '<a class="item" href="#/join">' + icon('users') + '<span class="grow">Join a shared project</span></a></div>' +
+      '<h2 class="h2 mt2">On your phone</h2><p class="small muted">Open this link on your phone and add it to your home screen: <span style="user-select:all">' + esc(S.appUrl) + '</span></p>' +
+      '<p class="tiny muted mt2">Signed in as ' + esc(S.user.email) + '.</p>';
+  },
+  mount() {
+    bindKeyForm();
+    $$('[data-keyform]').forEach((f) => f.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const p = f.dataset.keyform, v = $('input', f).value.trim();
+      if (!v) return;
+      busy('key' + p, async () => { const r = await api('saveKey', p, v); S.settings = r.settings; S.keys = r.keys; toast('Key saved'); });
+    }));
+    const save = (patch) => api('saveSettings', patch).then((r) => { S.settings = r.settings; S.keys = r.keys; toast('Saved'); render(); }).catch(fail);
+    $('#set-provider').addEventListener('change', (e) => save({ aiProvider: e.target.value || null }));
+    $('#set-audio').addEventListener('change', (e) => save({ saveAudio: e.target.checked }));
+    $('#set-lang').addEventListener('change', (e) => save({ defaultLanguage: e.target.value }));
+  },
+};
+ACT.removeKey = (el) => busy('key' + el.dataset.p, async () => { const r = await api('saveKey', el.dataset.p, ''); S.settings = r.settings; S.keys = r.keys; toast('Key removed'); });
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+function applyBootstrap(d) {
+  Object.assign(S, d);
+  S.ready = true;
+}
+function boot() {
+  api('bootstrap').then((d) => {
+    applyBootstrap(d);
+    const join = $('#app').getAttribute('data-join');
+    if (join) { S.joinRef = join; S.autoJoin = true; location.hash = '/join'; }
+    render();
+  }).catch((e) => {
+    $('#app').innerHTML = '<div class="splash"><div class="splash-mark">L</div><p><b>Little couldn\'t start.</b></p><p class="small" style="max-width:420px">' + esc(e.message) + '</p><p><button class="btn" onclick="location.reload()">Try again</button></p></div>';
+  });
+}
+boot();
+})();
+</script>
