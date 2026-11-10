@@ -381,6 +381,15 @@ function IdeaSheet({
     setBusy(null);
   };
 
+  // The box fits its text, so Little's take sits right under the idea.
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text, idea.riff]);
+
   const btn = "flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm hover:bg-foreground/5 disabled:opacity-40";
 
   return (
@@ -407,11 +416,12 @@ function IdeaSheet({
         </div>
         <div className="flex-1 overflow-y-auto px-5 pb-4 pt-2">
           <textarea
+            ref={boxRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onBlur={commit}
             aria-label="Idea"
-            className="min-h-40 w-full resize-none bg-transparent text-[17px] leading-relaxed outline-none"
+            className={`w-full resize-none bg-transparent text-[17px] leading-relaxed outline-none ${idea.riff ? "min-h-16" : "min-h-40"}`}
           />
           {busy && (
             <div className="mt-2 flex items-center gap-3 rounded-2xl bg-card/70 px-4 py-3 text-sm">

@@ -301,7 +301,7 @@ export function HomeDashboard() {
               </button>
             )}
 
-            <Section title="Due soon" href="/todos?tab=mine" more="All to-dos">
+            <Section title={topTodos.some((t) => t.due) ? "Due soon" : "Up next"} href="/todos?tab=mine" more="All to-dos">
               {todos === null ? (
                 <Skeleton rows={3} />
               ) : topTodos.length === 0 ? (

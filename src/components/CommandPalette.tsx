@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NoteMeta, Project } from "@/lib/drive";
 import { cache } from "@/lib/local";
 import { Icon, type IconName } from "./Icon";
+import { confirmLeave } from "@/lib/useLeaveGuard";
 
 // One box to jump anywhere: notes, projects and actions. Opens with Ctrl/⌘ K,
 // "/", or the search button in the header. Single-key shortcuts (n, d, t, m,
@@ -79,7 +80,8 @@ export function CommandPalette() {
         show();
       } else if (SHORTCUTS[e.key]) {
         e.preventDefault();
-        router.push(SHORTCUTS[e.key]);
+        // Never jump away from a live recording or unsaved typing without asking.
+        if (confirmLeave(SHORTCUTS[e.key])) router.push(SHORTCUTS[e.key]);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -138,7 +140,7 @@ export function CommandPalette() {
 
   const go = (it: Item) => {
     setOpen(false);
-    router.push(it.href);
+    if (confirmLeave(it.href)) router.push(it.href);
   };
 
   let lastGroup = "";

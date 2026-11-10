@@ -96,6 +96,8 @@ function NotePage() {
   const [tab, setTab] = useState<Tab>("ai");
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Shows "Saved" for a moment after an autosave, instead of nagging while you type.
+  const [justSaved, setJustSaved] = useState(false);
   const [aiBusy, setAiBusy] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [showKeyNeeded, setShowKeyNeeded] = useState<
@@ -262,6 +264,7 @@ function NotePage() {
       setMeta(updated);
       setSavedNotes({ title: updated.title, notes });
       setMessage(null);
+      setJustSaved(true);
     } catch {
       setMessage(
         "Couldn't save to Google Drive. Check your connection and try again.",
@@ -462,6 +465,12 @@ function NotePage() {
     }
   };
 
+  useEffect(() => {
+    if (!justSaved) return;
+    const t = setTimeout(() => setJustSaved(false), 2000);
+    return () => clearTimeout(t);
+  }, [justSaved]);
+
   // Messages show as a toast for a few seconds.
   useEffect(() => {
     if (!message || !meta) return;
@@ -601,6 +610,7 @@ function NotePage() {
                   </span>
                 </>
               ) : null}
+              <SaveStatus dirty={dirty} saving={saving} justSaved={justSaved} onSave={save} />
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-1.5">
@@ -851,19 +861,31 @@ function NotePage() {
               </section>
             )}
 
-            {(dirty || saving) && (
-              <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 md:bottom-8">
-                <div className="animate-pop flex items-center gap-3 rounded-full bg-foreground py-1.5 pl-4 pr-1.5 text-sm text-background shadow-2xl">
-                  <span>Unsaved changes</span>
-                  <button onClick={save} disabled={saving} className="rounded-full bg-background px-4 py-1.5 font-medium text-foreground disabled:opacity-60">
-                    {saving ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </div>
-            )}
           </>
         )}
       </main>
     </>
+  );
+}
+
+/** A quiet autosave indicator next to the date: "Editing", "Saving…", then "Saved". */
+function SaveStatus({ dirty, saving, justSaved, onSave }: { dirty: boolean; saving: boolean; justSaved: boolean; onSave: () => void }) {
+  if (!dirty && !saving && !justSaved) return null;
+  return (
+    <span className="ml-auto flex items-center gap-1.5 text-[13px]" aria-live="polite">
+      {saving ? (
+        <>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted" /> Saving…
+        </>
+      ) : dirty ? (
+        <button onClick={onSave} title="Save now (⌘S)" className="flex items-center gap-1.5 rounded-md px-1.5 py-0.5 hover:bg-subtle hover:text-foreground">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#e9a23b]" /> Editing
+        </button>
+      ) : (
+        <span className="animate-pop flex items-center gap-1 text-[#2a9d8f]">
+          <Icon name="check" size={13} /> Saved
+        </span>
+      )}
+    </span>
   );
 }
