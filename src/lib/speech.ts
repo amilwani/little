@@ -37,6 +37,8 @@ export function useLiveTranscript(getElapsedSec: () => number) {
   const [supported, setSupported] = useState(true);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [interim, setInterim] = useState("");
+  // Mirrors `interim`, so stop() can keep the words still being recognised.
+  const interimRef = useRef("");
   const [error, setError] = useState<string | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const wantRunning = useRef(false);
@@ -56,6 +58,8 @@ export function useLiveTranscript(getElapsedSec: () => number) {
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (e) => {
+      // A recogniser we already replaced (pause, language switch) must not add lines.
+      if (recRef.current !== rec) return;
       let interimText = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -68,7 +72,8 @@ export function useLiveTranscript(getElapsedSec: () => number) {
           interimText += `${text} `;
         }
       }
-      setInterim(interimText.trim());
+      interimRef.current = interimText.trim();
+      setInterim(interimRef.current);
     };
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
@@ -77,6 +82,10 @@ export function useLiveTranscript(getElapsedSec: () => number) {
     };
     // Browsers stop recognition after silence or ~60s; restart while recording.
     rec.onend = () => {
+      // Only the current recogniser restarts. An old one ending late after a quick
+      // pause and resume would otherwise run alongside it and repeat every line.
+      if (recRef.current !== rec) return;
+      interimRef.current = "";
       setInterim("");
       if (wantRunning.current) {
         try {
@@ -104,12 +113,23 @@ export function useLiveTranscript(getElapsedSec: () => number) {
     [startRecognition],
   );
 
+  /** Keeps words that were heard but not yet final, so stopping never drops the last sentence. */
+  const flushInterim = useCallback(() => {
+    const text = interimRef.current.trim();
+    interimRef.current = "";
+    setInterim("");
+    if (!text) return;
+    const startSec = Math.max(0, Math.round(elapsedRef.current()));
+    setSegments((s) => [...s, { text, startSec }]);
+  }, []);
+
   const stop = useCallback(() => {
     wantRunning.current = false;
-    recRef.current?.stop();
+    const rec = recRef.current;
     recRef.current = null;
-    setInterim("");
-  }, []);
+    rec?.stop();
+    flushInterim();
+  }, [flushInterim]);
 
   /** Switch language mid-recording (English <-> Hindi). */
   const setLanguage = useCallback(
@@ -117,16 +137,19 @@ export function useLiveTranscript(getElapsedSec: () => number) {
       langRef.current = lang;
       if (wantRunning.current && recRef.current) {
         const old = recRef.current;
+        recRef.current = null;
         old.onend = null;
         old.stop();
+        flushInterim();
         startRecognition();
       }
     },
-    [startRecognition],
+    [startRecognition, flushInterim],
   );
 
   const reset = useCallback(() => {
     setSegments([]);
+    interimRef.current = "";
     setInterim("");
   }, []);
 

@@ -461,10 +461,20 @@ function EditSheet({
   onDelete: () => void;
 }) {
   const [t, setT] = useState(todo);
+  // Esc closes, like every other sheet in Little.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const field = "w-full rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-foreground/30";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 backdrop-blur-[2px] md:items-center" onClick={onClose}>
       <form
+        role="dialog"
+        aria-label="Edit to-do"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();

@@ -7,6 +7,7 @@ import { KeyNeeded } from "@/components/KeyNeeded";
 import { LanguageToggle, type Lang } from "@/components/LanguageToggle";
 import { Icon } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
+import { LevelMeter } from "@/components/LevelMeter";
 import { AiError, cleanupDictation, pickTextAi, pickTranscriber, PROVIDER_NAMES, transcribeAudio } from "@/lib/ai";
 import { cache, type PendingNote } from "@/lib/local";
 import { saveNoteToDrive } from "@/lib/notes";
@@ -14,6 +15,7 @@ import { formatDuration, useRecorder } from "@/lib/recorder";
 import { useLiveTranscript } from "@/lib/speech";
 import { useAccessToken } from "@/lib/useAccessToken";
 import { useSettings } from "@/lib/useSettings";
+import { useLeaveGuard } from "@/lib/useLeaveGuard";
 
 type Phase = "idle" | "recording" | "working" | "done";
 
@@ -57,6 +59,13 @@ export default function Dictate() {
     recorder.stop();
     setPhase("working");
   };
+
+  // Leaving mid-dictation would throw the words away: finish first instead.
+  useLeaveGuard(phase === "recording" || phase === "working", () => {
+    if (phase === "working") return confirm("Still writing up what you said. Leave anyway?");
+    if (confirm("Stop dictating and keep what you said?")) stop();
+    return false;
+  });
 
   // When the audio is ready: optionally re-transcribe with AI, then clean up.
   useEffect(() => {
@@ -200,6 +209,7 @@ export default function Dictate() {
       </main>
 
       <div className="safe-bottom fixed inset-x-0 bottom-0 flex flex-col items-center gap-2 bg-gradient-to-t from-background via-background to-transparent pt-10">
+        {phase === "recording" && <LevelMeter stream={recorder.stream} active bars={24} className="mb-1 text-accent" />}
         {phase === "recording" ? (
           <button
             onClick={stop}

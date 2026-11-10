@@ -12,6 +12,7 @@ import { NAV, isActive, withProject } from "./AppHeader";
 import type { NoteMeta, Project } from "@/lib/drive";
 import { cache } from "@/lib/local";
 import { useAccessToken } from "@/lib/useAccessToken";
+import { confirmLeave } from "@/lib/useLeaveGuard";
 
 const row =
   "flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-[14px] transition-colors hover:bg-foreground/[0.05]";
@@ -23,9 +24,13 @@ export function Sidebar() {
   const { user } = useAccessToken();
   const first = user?.name?.split(" ")[0];
 
+  const go = (href: string) => {
+    if (confirmLeave(href)) router.push(href);
+  };
+
   const newProject = () => {
     if (pathname === "/notes") window.dispatchEvent(new Event("little:new-project"));
-    else router.push("/notes#new-project");
+    else go("/notes#new-project");
   };
 
   return (
@@ -39,10 +44,10 @@ export function Sidebar() {
           label="New"
           icon="plus"
           items={[
-            { label: "Record a meeting", icon: "mic", onClick: () => router.push(withProject("/notes/new")) },
-            { label: "Write a note", icon: "doc", onClick: () => router.push(withProject("/notes/write")) },
-            { label: "Dictate", icon: "pen", onClick: () => router.push("/dictate") },
-            { label: "Jot down an idea", icon: "bulb", onClick: () => router.push("/ideas?new=1") },
+            { label: "Record a meeting", icon: "mic", onClick: () => go(withProject("/notes/new")) },
+            { label: "Write a note", icon: "doc", onClick: () => go(withProject("/notes/write")) },
+            { label: "Dictate", icon: "pen", onClick: () => go("/dictate") },
+            { label: "Jot down an idea", icon: "bulb", onClick: () => go("/ideas?new=1") },
           ]}
         />
       </div>

@@ -35,6 +35,8 @@ function WriteNote() {
   const [error, setError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const saveRef = useRef<() => void>(() => {});
+  // One id per note, so tapping Save again after a failed upload never makes a copy.
+  const idRef = useRef<{ id: string; createdAt: string } | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -52,10 +54,11 @@ function WriteNote() {
   const save = async () => {
     if (empty || saving) return;
     setError(null);
+    idRef.current ??= { id: crypto.randomUUID(), createdAt: new Date().toISOString() };
     const note: PendingNote = {
-      id: crypto.randomUUID(),
+      id: idRef.current.id,
       title: title.trim() || body.trim().split("\n")[0].slice(0, 60) || defaultNoteTitle(),
-      createdAt: new Date().toISOString(),
+      createdAt: idRef.current.createdAt,
       durationSec: 0,
       kind: "written",
       language: settings.defaultLanguage,

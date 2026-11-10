@@ -99,11 +99,12 @@ export function AppHeader({
             <button
               onClick={openPalette}
               aria-label="Search and jump (Ctrl K)"
-              className={`flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-foreground ${focus ? "" : "md:hidden"}`}
+              className={`flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-foreground ${focus ? "max-md:hidden" : "md:hidden"}`}
             >
               <Icon name="search" size={18} />
             </button>
-            <Link
+            {/* On a phone, Settings sits on the top-level screens only, so inner pages stay uncluttered. */}
+            {!back && !focus && <Link
               href="/settings"
               aria-label="Settings"
               aria-current={pathname.startsWith("/settings") ? "page" : undefined}
@@ -112,7 +113,7 @@ export function AppHeader({
               }`}
             >
               <Icon name="settings" size={18} />
-            </Link>
+            </Link>}
             {!focus && !hideRecord && (
               <RecordLink className="ml-1 hidden h-8 items-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:opacity-90 md:flex">
                 <span className="h-2 w-2 rounded-full bg-accent" />

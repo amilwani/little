@@ -43,8 +43,24 @@ function notesMarkdown(note: PendingNote) {
   return `# ${note.title}\n\n${note.notes.trim()}\n`;
 }
 
+// Notes uploading right now in this tab. If you leave the recording screen while
+// it uploads, the notes list's background sync must not start a second copy.
+const uploading = new Map<string, Promise<NoteMeta>>();
+
 /** Writes a finished recording to the user's Drive and updates index.json. */
-export async function saveNoteToDrive(
+export function saveNoteToDrive(
+  token: string,
+  note: PendingNote,
+  opts: { saveAudio: boolean; onProgress?: (step: string) => void },
+): Promise<NoteMeta> {
+  const running = uploading.get(note.id);
+  if (running) return running;
+  const run = uploadNote(token, note, opts).finally(() => uploading.delete(note.id));
+  uploading.set(note.id, run);
+  return run;
+}
+
+async function uploadNote(
   token: string,
   note: PendingNote,
   opts: { saveAudio: boolean; onProgress?: (step: string) => void },
@@ -115,6 +131,7 @@ export async function syncPending(token: string, saveAudio: boolean) {
   const pending = await cache.listPending();
   let synced = 0;
   for (const note of pending) {
+    if (uploading.has(note.id)) continue;
     try {
       await saveNoteToDrive(token, note, { saveAudio });
       synced++;

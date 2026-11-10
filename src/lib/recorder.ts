@@ -20,6 +20,8 @@ export function useRecorder() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
+  /** The live microphone stream while recording, for the level meter. */
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -71,6 +73,7 @@ export function useRecorder() {
         audio: { echoCancellation: true, noiseSuppression: true },
       });
       streamRef.current = stream;
+      setStream(stream);
       const mimeType = pickMimeType();
       const rec = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : undefined);
       chunksRef.current = [];
@@ -80,6 +83,7 @@ export function useRecorder() {
       rec.onstop = () => {
         setBlob(new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" }));
         stream.getTracks().forEach((t) => t.stop());
+        setStream(null);
       };
       rec.start(1000);
       mediaRef.current = rec;
@@ -134,7 +138,7 @@ export function useRecorder() {
     [releaseWakeLock],
   );
 
-  return { state, elapsedMs, getElapsedMs, error, blob, start, pause, resume, stop };
+  return { state, elapsedMs, getElapsedMs, error, blob, stream, start, pause, resume, stop };
 }
 
 export function formatDuration(ms: number) {

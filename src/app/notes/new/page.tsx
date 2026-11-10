@@ -9,6 +9,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { LanguageToggle, type Lang } from "@/components/LanguageToggle";
 import { Icon } from "@/components/Icon";
 import { Mascot } from "@/components/Mascot";
+import { LevelMeter } from "@/components/LevelMeter";
 import { TranscriptView } from "@/components/TranscriptView";
 import { cache, type PendingNote } from "@/lib/local";
 import { saveNoteToDrive } from "@/lib/notes";
@@ -282,6 +283,14 @@ function NewRecording() {
 
       {recorder.state !== "stopped" && (
         <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/90 pt-4 backdrop-blur-md">
+          {active && (
+            <LevelMeter
+              stream={recorder.stream}
+              active={recorder.state === "recording"}
+              bars={36}
+              className={`mx-auto mb-3 max-w-3xl px-6 transition-colors ${recorder.state === "recording" ? "text-accent" : "text-muted/50"}`}
+            />
+          )}
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6">
             <div className="flex min-w-24 items-center gap-2.5">
               {recorder.state === "recording" && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent" />}
